@@ -78,19 +78,35 @@ node test/smoke.mjs   # end-to-end MCP stdio smoke test (after build)
 
 ## Register in Claude
 
-After `npm run build`, add to your MCP client config (e.g. `claude_desktop_config.json` or
-`.mcp.json`):
+After `npm run build`, register the server. **Project scope** — a `.mcp.json` at a project
+root (committable; activates when Claude Code runs in that project):
+
+```json
+{
+  "mcpServers": {
+    "goalplanner-share": { "type": "stdio", "command": "node", "args": ["dist/index.js"] }
+  }
+}
+```
+
+Use a relative `dist/index.js` only in this repo's own `.mcp.json` (cwd = repo root). For a
+`.mcp.json` in any other project, or for **user scope** (`~/.claude.json` → top-level
+`mcpServers`, available everywhere), use the absolute path:
 
 ```json
 {
   "mcpServers": {
     "goalplanner-share": {
+      "type": "stdio",
       "command": "node",
       "args": ["/absolute/path/to/goalplanner-share-mcp/dist/index.js"]
     }
   }
 }
 ```
+
+The server loads at Claude Code startup, so a newly-registered server appears in the *next*
+session. Claude Desktop uses the same block in `claude_desktop_config.json`.
 
 ## Format
 
