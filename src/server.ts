@@ -15,6 +15,7 @@ import { ITEM_COUNT } from "./refdata/items.js";
 import { DIARY_COUNT } from "./refdata/diaries.js";
 import { QUEST_COUNT } from "./refdata/quests.js";
 import { ACCOUNT_METRIC_COUNT } from "./refdata/accounts.js";
+import { CA_COUNT } from "./refdata/cas.js";
 
 const goalShape = z.object({
   id: z.string().optional().describe("Stable label for this goal, used by other goals' requires/orRequires. Defaults to the index."),
@@ -161,8 +162,9 @@ export function createServer(): McpServer {
         "  Tasks (seasonal worlds only). Wire carries the plugin AccountMetric ENUM constant; missing",
         "  targetValue assumes the metric's max; out-of-range targets warn.",
         "",
-        "Phase 2 (not yet validated — pass an explicit identifier to emit unverified, else CUSTOM fallback):",
-        "  - COMBAT_ACHIEVEMENT (caTaskId)",
+        `COMBAT_ACHIEVEMENT resolves ${CA_COUNT} CA task names (exact, e.g. "Noxious Foe") — the same`,
+        "  wiki table the plugin loads, so name↔caTaskId pairs match the recipient. Pass caTaskId",
+        "  (0–639) to pin a task explicitly. Tier sprite + description mirror in-game-created goals.",
         "",
         "CUSTOM: always available; never auto-tracks (manual check-off).",
       ];

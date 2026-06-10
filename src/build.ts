@@ -40,6 +40,7 @@ import {
   searchAccountMetrics,
   type AccountMetricRef,
 } from "./refdata/accounts.js";
+import { resolveCa, isKnownCaTaskId, searchCas, caTierSprite, CA_MAX_TASK_ID, type CaRef } from "./refdata/cas.js";
 
 /** GoalType → the label the plugin shows on a goal card. */
 const TYPE_LABEL: Record<string, string> = {
@@ -57,7 +58,16 @@ const TYPE_LABEL: Record<string, string> = {
 const withCommas = (n: number): string => n.toLocaleString("en-US");
 
 /** Kinds the typed core fully validates today (everything else → CUSTOM fallback). */
-export const TYPED_CORE: GoalType[] = ["SKILL", "BOSS", "ITEM_GRIND", "DIARY", "QUEST", "ACCOUNT", "CUSTOM"];
+export const TYPED_CORE: GoalType[] = [
+  "SKILL",
+  "BOSS",
+  "ITEM_GRIND",
+  "DIARY",
+  "QUEST",
+  "ACCOUNT",
+  "COMBAT_ACHIEVEMENT",
+  "CUSTOM",
+];
 
 export interface GoalSpec {
   /** Caller label used to wire requires/orRequires; defaults to the goal's index. */
@@ -606,6 +616,73 @@ function resolveGoal(
         didYouMean,
     );
     return custom(g, ref, id, "account metric not recognized");
+  }
+
+  // COMBAT_ACHIEVEMENT (typed core) ------------------------------------------
+  // Tracks by caTaskId — the bit index (0–639) into the CA_TASK_COMPLETED
+  // varplayers. The corpus is the same wiki table the plugin's
+  // WikiCaRepository loads, so name↔id pairs match what the recipient
+  // resolves. Sprite + description mirror plugin-created CA goals.
+  if (rawType === "combat_achievement" || rawType === "ca" || asGoalType(g.type) === "COMBAT_ACHIEVEMENT") {
+    const mkCa = (taskId: number, name: string, tracked: boolean, tierRef?: CaRef, note?: string) => {
+      const dto: GoalShareDto = { ref, type: "COMBAT_ACHIEVEMENT", name, caTaskId: taskId, targetValue: 1 };
+      if (tierRef) {
+        dto.description = g.description?.trim() || `${tierRef.tier} Combat Achievement`;
+        const sprite = caTierSprite(tierRef.tier);
+        if (sprite > 0) dto.spriteId = sprite;
+      } else if (g.description?.trim()) {
+        dto.description = g.description.trim();
+      }
+      if (g.wikiUrl?.trim()) dto.wikiUrl = g.wikiUrl.trim();
+      if (g.optional) dto.optional = true;
+      const res: ResolvedGoal = {
+        ref,
+        id,
+        type: "COMBAT_ACHIEVEMENT",
+        name,
+        detail: tierRef ? `${tierRef.tier}${tierRef.monster ? ` · ${tierRef.monster}` : ""}` : `task ${taskId}`,
+        tracked,
+        requires: [],
+        orRequires: [],
+      };
+      if (note) res.note = note;
+      return { dto, res };
+    };
+
+    if (g.caTaskId !== undefined && g.caTaskId >= 0) {
+      if (g.caTaskId > CA_MAX_TASK_ID) {
+        warnings.push(
+          `goal "${id}": caTaskId ${g.caTaskId} is outside the valid 0–639 range — the recipient's ` +
+            `tracker will NEVER track it. Emitted UNVERIFIED; fix the id.`,
+        );
+        return mkCa(g.caTaskId, g.name?.trim() || `CA task ${g.caTaskId}`, false, undefined, "invalid identifier");
+      }
+      const known = isKnownCaTaskId(g.caTaskId);
+      if (known) {
+        return mkCa(known.caTaskId, g.name?.trim() || known.name, true, known);
+      }
+      warnings.push(
+        `goal "${id}": caTaskId ${g.caTaskId} is in range but not in the known task table — emitted ` +
+          `UNVERIFIED (auto-tracks only if it is a real task id).`,
+      );
+      return mkCa(g.caTaskId, g.name?.trim() || `CA task ${g.caTaskId}`, false, undefined, "unverified identifier");
+    }
+
+    const match = resolveCa(g.name);
+    if (match) {
+      // Resolving BY NAME: the canonical task name wins. A deliberate custom
+      // label is supported via the explicit-caTaskId path above.
+      return mkCa(match.caTaskId, match.name, true, match);
+    }
+    const suggestions = searchCas(g.name, 5);
+    const didYouMean = suggestions.length
+      ? ` Closest matches: ${suggestions.map((s) => `${s.name} (${s.tier}${s.monster ? `, ${s.monster}` : ""}, caTaskId ${s.caTaskId})`).join(", ")}.`
+      : "";
+    warnings.push(
+      `goal "${id}": combat achievement "${g.name ?? ""}" not recognized — emitted as CUSTOM (won't auto-track).` +
+        didYouMean,
+    );
+    return custom(g, ref, id, "combat achievement not recognized");
   }
 
   // Other GoalTypes: Phase 1 has no validation dataset. Pass through if the

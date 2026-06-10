@@ -21,7 +21,8 @@
     "gen:diaries": "node scripts/gen-diaries.mjs",
     "gen:loadouts": "node scripts/gen-loadouts.mjs",
     "gen:quests": "node scripts/gen-quests.mjs",
-    "gen:accounts": "node scripts/gen-accounts.mjs"
+    "gen:accounts": "node scripts/gen-accounts.mjs",
+    "gen:cas": "node scripts/gen-cas.mjs"
   },
   "engines": {
     "node": ">=18"
