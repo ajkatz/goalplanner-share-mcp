@@ -13,6 +13,7 @@
  * the caller resolving an id via the OSRS Wiki and passing `itemId` explicitly.
  */
 import { PACKED_ITEMS } from "./items.data.js";
+import { PACKED_ITEM_NAMES } from "./item-names.data.js";
 import { LOADOUTS_DATA } from "./loadouts.data.js";
 
 export interface ItemMatch {
@@ -41,6 +42,24 @@ for (const line of PACKED_ITEMS.split("\n")) {
   const bucket = byLoose.get(lk);
   if (bucket) bucket.push(id);
   else byLoose.set(lk, [id]);
+}
+
+// Authoritative DISPLAY names (wiki prices mapping, tradeables only) — covers
+// the codename-divergent tail (Armadyl crossbow, Amulet of torture, Voidwaker
+// blade) without hand-curation. Loose buckets keep ambiguity detection.
+const displayById = new Map<number, string>();
+const displayByLoose = new Map<string, number[]>();
+for (const line of PACKED_ITEM_NAMES.split("\n")) {
+  const tab = line.indexOf("\t");
+  if (tab < 0) continue;
+  const id = Number.parseInt(line.slice(0, tab), 10);
+  const display = line.slice(tab + 1);
+  if (!Number.isInteger(id) || !display) continue;
+  displayById.set(id, display);
+  const lk = looseKey(display);
+  const bucket = displayByLoose.get(lk);
+  if (bucket) bucket.push(id);
+  else displayByLoose.set(lk, [id]);
 }
 
 /**
@@ -91,6 +110,95 @@ const ALIASES: Record<string, { id: number; name: string }> = {
   scythe: { id: 22325, name: "Scythe of vitur" },
   sang: { id: 22323, name: "Sanguinesti staff" },
   sanguinesti: { id: 22323, name: "Sanguinesti staff" },
+  // Untradeables absent from BOTH generated tables (objtypes snapshot predates
+  // them / no wiki-prices row). Ids individually verified against the OSRS
+  // Wiki item infobox (2026-06-09).
+  "cursed phalanx": { id: 27248, name: "Cursed phalanx" },
+  "sanguine dust": { id: 25746, name: "Sanguine dust" },
+  "sanguine ornament kit": { id: 25744, name: "Sanguine ornament kit" },
+  "twisted ancestral colour kit": { id: 24670, name: "Twisted ancestral colour kit" },
+  "blessed dizana's quiver": { id: 28955, name: "Blessed dizana's quiver" },
+  "noxious point": { id: 29790, name: "Noxious point" }, // noxious_halberd_part_1
+  "noxious blade": { id: 29792, name: "Noxious blade" }, // noxious_halberd_part_2
+  "noxious pommel": { id: 29794, name: "Noxious pommel" }, // noxious_halberd_part_3
+};
+
+/**
+ * Community nicknames resolved BY NAME REFERENCE through the tables above at
+ * lookup time — never hand-typed ids (the wrong-id bug class our DECISIONS.md
+ * warns about). Targets are display names (wiki mapping), codenames, or
+ * ALIASES keys; the clan-corpus test asserts every entry still resolves.
+ * Optional label overrides the resolved display (soulreaper part codenames
+ * prettify to the wrong name).
+ */
+const NICKNAMES: Record<string, string | { target: string; label: string }> = {
+  zcb: "Zaryte crossbow",
+  dhcb: "Dragon hunter crossbow",
+  acb: "Armadyl crossbow",
+  dwh: "Dragon warhammer",
+  kodai: "Kodai wand",
+  dins: "Dinh's bulwark",
+  dinhs: "Dinh's bulwark",
+  buckler: "Twisted buckler",
+  fero: "Ferocious gloves",
+  feros: "Ferocious gloves",
+  lance: "Dragon hunter lance",
+  dhl: "Dragon hunter lance",
+  eternals: "Eternal boots",
+  occult: "Occult necklace",
+  rangers: "Ranger boots",
+  avernic: "Avernic defender hilt",
+  treads: "Avernic treads",
+  torture: "Amulet of torture",
+  rancour: "Amulet of rancour",
+  "rancour amulet": "Amulet of rancour",
+  "serp visage": "Serpentine visage",
+  "zammy hasta": "Zamorakian hasta",
+  "justi chest": "Justiciar chestguard",
+  "justi helm": "Justiciar faceguard",
+  "justi legs": "Justiciar legguards",
+  "ancestral top": "Ancestral robe top",
+  "anc top": "Ancestral robe top",
+  "ancy top": "Ancestral robe top",
+  "anc body": "Ancestral robe top",
+  "ancy body": "Ancestral robe top",
+  "ancestral body": "Ancestral robe top",
+  "anc legs": "Ancestral robe bottom",
+  "ancy legs": "Ancestral robe bottom",
+  "ancestral legs": "Ancestral robe bottom",
+  "ancestral bottoms": "Ancestral robe bottom",
+  "inq helm": "Inquisitor's great helm",
+  "inq body": "Inquisitor's hauberk",
+  "inq chest": "Inquisitor's hauberk",
+  "inq top": "Inquisitor's hauberk",
+  "inq legs": "Inquisitor's plateskirt",
+  "inq skirt": "Inquisitor's plateskirt",
+  "inq mace": "Inquisitor's mace",
+  "ven vestige": "Venator vestige",
+  "bel vestige": "Bellator vestige",
+  vambs: "Zaryte vambraces",
+  ralos: { target: "tonalztics_of_ralos_uncharged", label: "Tonalztics of ralos (uncharged)" },
+  "tonalztics of ralos": { target: "tonalztics_of_ralos_uncharged", label: "Tonalztics of ralos (uncharged)" },
+  "fang kit": "Cursed phalanx",
+  "sang kit": "Sanguine ornament kit",
+  "sang dust": "Sanguine dust",
+  "twisted kit": "Twisted ancestral colour kit",
+  quiver: { target: "dizanas_quiver_uncharged", label: "Dizana's quiver (uncharged)" },
+  "dizana's quiver": { target: "dizanas_quiver_uncharged", label: "Dizana's quiver (uncharged)" },
+  "blessed quiver": "Blessed dizana's quiver",
+  "bless quiver": "Blessed dizana's quiver",
+  moxi: { target: "amoxliatlpet", label: "Moxi" },
+  "callisto cub": { target: "callisto_pet", label: "Callisto cub" },
+  "scorpia's offspring": { target: "scorpia_pet", label: "Scorpia's offspring" },
+  "pharoah's sceptre": "Pharaoh's sceptre (uncharged)", // common misspelling
+  "pharaoh's sceptre": "Pharaoh's sceptre (uncharged)",
+  "executioner's axe head": { target: "soulreaper_axe_head", label: "Executioner's axe head" },
+  "executioner axe head": { target: "soulreaper_axe_head", label: "Executioner's axe head" },
+  "eye of the duke": { target: "soulreaper_axe_eye", label: "Eye of the duke" },
+  "leviathan's lure": { target: "soulreaper_axe_lure", label: "Leviathan's lure" },
+  "siren's staff": { target: "soulreaper_axe_staff", label: "Siren's staff" },
+  blorva: { target: "dt2_sanguine_torva_kit", label: "Ancient blood ornament kit" },
+  "blood torva": { target: "dt2_sanguine_torva_kit", label: "Ancient blood ornament kit" },
 };
 
 /** Codename → sentence-case display ("abyssal_whip" → "Abyssal whip"). */
@@ -101,18 +209,20 @@ const prettify = (codename: string): string => {
 
 /** Look up the display name for a known itemId (for validating an explicit id). */
 export function itemNameById(id: number): string | null {
+  const display = displayById.get(id);
+  if (display) return display;
   const codename = byId.get(id);
   if (codename) return prettify(codename);
   return CURATED_NAMES.get(id) ?? null;
 }
 
 /**
- * True when `id` is a real item we recognize: the objtypes corpus, OR a curated
- * set/loadout member (which may be newer than the objtypes snapshot, e.g.
- * wiki-sourced BiS items like Amulet of rancour).
+ * True when `id` is a real item we recognize: the objtypes corpus, the wiki
+ * display-name mapping, OR a curated set/loadout member (which may be newer
+ * than the objtypes snapshot, e.g. wiki-sourced BiS items like Amulet of rancour).
  */
 export function isKnownItemId(id: number): boolean {
-  return byId.has(id) || CURATED_NAMES.has(id);
+  return byId.has(id) || displayById.has(id) || CURATED_NAMES.has(id);
 }
 
 /**
@@ -130,6 +240,22 @@ export function resolveItem(input: string | undefined): ItemMatch | null {
   const alias = ALIASES[lower];
   if (alias) return { itemId: alias.id, name: alias.name, codename: byId.get(alias.id) ?? "" };
 
+  // Nicknames re-enter resolution with their target (one level deep — targets
+  // are display names/codenames/alias keys, never other nicknames).
+  const nick = NICKNAMES[lower];
+  if (nick) {
+    const target = typeof nick === "string" ? nick : nick.target;
+    const hit = resolveItem(target);
+    if (hit) return typeof nick === "string" ? hit : { ...hit, name: nick.label };
+  }
+
+  // Wiki display names first — what players actually type.
+  const displayBucket = displayByLoose.get(looseKey(trimmed));
+  if (displayBucket && displayBucket.length === 1) {
+    const id = displayBucket[0]!;
+    return { itemId: id, name: displayById.get(id)!, codename: byId.get(id) ?? "" };
+  }
+
   // Codenames carry variant suffixes as underscores, not parens: display
   // "Bronze dart(p+)" → codename `bronze_dart_p+`, "Rune platebody(t)" → `..._t`.
   // Fold a trailing `(x)` into `_x` so those match exactly instead of going
@@ -139,12 +265,12 @@ export function resolveItem(input: string | undefined): ItemMatch | null {
     .replace(/\(([^)]*)\)/g, (_full, inner: string) => (inner ? `_${inner}` : ""))
     .replace(/\s+/g, "_");
   const exact = byCodename.get(codeKey);
-  if (exact !== undefined) return { itemId: exact, name: prettify(byId.get(exact)!), codename: byId.get(exact)! };
+  if (exact !== undefined) return { itemId: exact, name: itemNameById(exact)!, codename: byId.get(exact)! };
 
   const bucket = byLoose.get(looseKey(trimmed));
   if (bucket && bucket.length === 1) {
     const id = bucket[0]!;
-    return { itemId: id, name: prettify(byId.get(id)!), codename: byId.get(id)! };
+    return { itemId: id, name: itemNameById(id)!, codename: byId.get(id)! };
   }
 
   return null;
@@ -165,18 +291,28 @@ export function searchItems(query: string | undefined, limit = 8): ItemMatch[] {
   if (!key) return [];
   const tokens = q.split(/[^a-z0-9]+/).filter(Boolean);
 
-  const scored: { id: number; codename: string; score: number }[] = [];
+  const scoreKey = (lk: string): number => {
+    if (lk === key) return 4;
+    if (lk.startsWith(key)) return 3;
+    if (tokens.length > 0 && tokens.every((t) => lk.includes(t))) return lk.includes(key) ? 2 : 1;
+    return 0;
+  };
+
+  const best = new Map<number, number>();
+  for (const [id, display] of displayById) {
+    const s = scoreKey(looseKey(display));
+    if (s > 0) best.set(id, s);
+  }
   for (const [id, codename] of byId) {
-    const lk = looseKey(codename);
-    let score = 0;
-    if (lk === key) score = 4;
-    else if (lk.startsWith(key)) score = 3;
-    else if (tokens.length > 0 && tokens.every((t) => lk.includes(t))) score = lk.includes(key) ? 2 : 1;
-    if (score > 0) scored.push({ id, codename, score });
+    const s = scoreKey(looseKey(codename));
+    if (s > (best.get(id) ?? 0)) best.set(id, s);
   }
 
+  const scored = [...best.entries()].map(([id, score]) => ({ id, score }));
   scored.sort((a, b) => b.score - a.score || a.id - b.id);
-  return scored.slice(0, limit).map(({ id, codename }) => ({ itemId: id, name: prettify(codename), codename }));
+  return scored
+    .slice(0, limit)
+    .map(({ id }) => ({ itemId: id, name: itemNameById(id)!, codename: byId.get(id) ?? "" }));
 }
 
 // --- Item sets ("full torva" → the pieces) ---------------------------------

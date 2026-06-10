@@ -55,8 +55,12 @@ Boss names are generated from the plugin's `BossKillData` via `npm run gen:bosse
 mcp-osrs data dir, or set `$OSRS_DATA_DIR`) — `placeholder_`/`cert_` variants filtered
 out since the plugin tracks an exact `itemId`. Item names that diverge from their
 internal codename (potions, `Cannonball`, …) resolve via a curated alias map or by you
-passing an `itemId` you looked up on the OSRS Wiki. Community **nicknames** (`tbow`, `bp`,
-`shadow`, `scythe`) and **armour sets** (`full torva`, `fortified masori`) are recognised too;
+passing an `itemId` you looked up on the OSRS Wiki. A second generated layer
+(`npm run gen:item-names`, wiki prices mapping) adds authoritative **display names** for ~4.5k
+tradeables — so the codename-divergent tail (Armadyl crossbow, Amulet of torture, Voidwaker
+pieces) resolves without curation. Community **nicknames** (`tbow`, `bp`,
+`shadow`, `scythe`, `zcb`, `dhcb`, `fero`, `rancour`, `blorva`, `fang kit`, …) resolve by NAME
+REFERENCE through the generated tables (never hand-typed ids) and **armour sets** (`full torva`, `fortified masori`) are recognised too;
 **loadout presets** (`maxed melee setup`, `maxed ranged`, `maxed mage`) expand to a full BiS-ish
 kit; and a `+`/`and`-joined **phrase** (`full masori + tbow`, `maxed melee + shadow`) fans out into
 one auto-tracking item goal per piece (visible in the preview before you confirm).
@@ -85,6 +89,14 @@ where the bucket `id` is the bit index (0–639) into the `CA_TASK_COMPLETED` va
 Cross-language parity for all three Phase-2 types is proven the same way as Phase 1: the plugin's
 real `ShareCodec` decoded a TS-crafted code and `Quest.valueOf` / `AccountMetric.valueOf` /
 the caTaskId range check resolved on the Java side (throwaway JUnit test, removed after the run).
+
+### Real-world corpus test
+
+`test/clan-corpus.test.ts` runs ~140 labeled goals collected from a clan Discord
+(`test/fixtures/clan-discord-goals-raw.txt`, verbatim) through the full builder — community
+shorthand, KC goals, account milestones ("Elite CAs" → CA points @ 1064), and the lines that
+legitimately fall to CUSTOM (greenlogs, outfits, minigames). Add new community examples there;
+the test names each line so a regression reads as English.
 
 ## Tools
 

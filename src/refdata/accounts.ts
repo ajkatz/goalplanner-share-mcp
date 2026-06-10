@@ -26,6 +26,8 @@ export const ACCOUNT_ALIASES: Record<string, string> = {
   combat: "COMBAT_LEVEL",
   cmb: "COMBAT_LEVEL",
   total: "TOTAL_LEVEL",
+  ttl: "TOTAL_LEVEL",
+  totallvl: "TOTAL_LEVEL",
   kudos: "KUDOS",
   museumkudos: "KUDOS",
   capoints: "CA_POINTS",
@@ -90,6 +92,67 @@ export function resolveAccountMetric(name: string | undefined): AccountMetricRef
     if (hits.size === 1) return [...hits][0];
   }
   return null;
+}
+
+/** A resolved metric plus the milestone the phrase itself implies. */
+export interface AccountPhrase {
+  metric: AccountMetricRef;
+  /** Target implied by the phrase ("Elite CAs" → 1064); undefined = caller's choice. */
+  impliedTarget?: number;
+}
+
+/** CA tier thresholds — mirrors the plugin's AccountMetric.CA_TIER_VALUES. */
+export const CA_TIER_POINTS: Record<string, number> = {
+  easy: 41,
+  medium: 161,
+  med: 161,
+  hard: 416,
+  elite: 1064,
+  master: 1904,
+  grandmaster: 2630,
+  gm: 2630,
+};
+
+/** Phrase → (metric, implied target). Keys are key()-normalized. */
+const PHRASES = new Map<string, { enumName: string; implied: (m: AccountMetricRef) => number }>();
+for (const [tier, points] of Object.entries(CA_TIER_POINTS)) {
+  for (const suffix of ["cas", "ca", "combatachievements", "combatachievementstier", "combatachievementtier"]) {
+    PHRASES.set(`${tier}${suffix}`, { enumName: "CA_POINTS", implied: () => points });
+  }
+}
+for (const k of ["questcape", "questpointcape", "maintainquestcape"]) {
+  PHRASES.set(k, { enumName: "QUEST_POINTS", implied: (m) => m.maxTarget });
+}
+for (const k of ["max", "maxing", "maxttl", "maxtotal", "maxtotallevel", "maxedaccount"]) {
+  PHRASES.set(k, { enumName: "TOTAL_LEVEL", implied: (m) => m.maxTarget });
+}
+
+/** Leading goal-verbs players prefix phrases with ("Reach Elite CAs", "get to 2k total"). */
+const LEAD_VERBS = ["reachthe", "reach", "getto", "getcloserto", "get", "become", "hit", "obtain", "earn", "actuallydo"];
+const stripVerb = (k: string): string => {
+  for (const v of LEAD_VERBS) {
+    if (k.startsWith(v) && k.length > v.length + 1) return k.slice(v.length);
+  }
+  return k;
+};
+
+/**
+ * Resolve a metric NAME OR PHRASE. Phrases can imply their own milestone
+ * ("Elite CAs" → CA_POINTS @ 1064; "quest cape" → QUEST_POINTS @ max); plain
+ * metric names resolve with no implied target.
+ */
+export function resolveAccountPhrase(name: string | undefined): AccountPhrase | null {
+  const raw = (name ?? "").trim();
+  if (!raw) return null;
+  for (const k of [key(raw), stripVerb(key(raw))]) {
+    const hit = PHRASES.get(k);
+    if (hit) {
+      const metric = BY_ENUM.get(hit.enumName);
+      if (metric) return { metric, impliedTarget: hit.implied(metric) };
+    }
+  }
+  const metric = resolveAccountMetric(raw) ?? resolveAccountMetric(stripVerb(key(raw)));
+  return metric ? { metric } : null;
 }
 
 /** Substring suggestions for did-you-mean warnings. */

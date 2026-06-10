@@ -22,7 +22,8 @@
     "gen:loadouts": "node scripts/gen-loadouts.mjs",
     "gen:quests": "node scripts/gen-quests.mjs",
     "gen:accounts": "node scripts/gen-accounts.mjs",
-    "gen:cas": "node scripts/gen-cas.mjs"
+    "gen:cas": "node scripts/gen-cas.mjs",
+    "gen:item-names": "node scripts/gen-item-names.mjs"
   },
   "engines": {
     "node": ">=18"

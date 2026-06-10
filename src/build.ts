@@ -35,7 +35,7 @@ import {
 } from "./refdata/diaries.js";
 import { resolveQuest, isKnownQuestEnum, searchQuests } from "./refdata/quests.js";
 import {
-  resolveAccountMetric,
+  resolveAccountPhrase,
   isKnownAccountMetric,
   searchAccountMetrics,
   type AccountMetricRef,
@@ -569,7 +569,7 @@ function resolveGoal(
       return { dto, res };
     };
 
-    const targetFor = (m: AccountMetricRef): number => {
+    const targetFor = (m: AccountMetricRef, impliedTarget?: number): number => {
       if (g.targetValue !== undefined && g.targetValue > 0) {
         if (g.targetValue < m.minTarget || g.targetValue > m.maxTarget) {
           warnings.push(
@@ -579,6 +579,8 @@ function resolveGoal(
         }
         return g.targetValue;
       }
+      // The phrase itself named the milestone ("Elite CAs" → 1064) — no warning.
+      if (impliedTarget !== undefined) return impliedTarget;
       warnings.push(
         `goal "${id}": no targetValue given for ${m.displayName} — assumed the maximum, ` +
           `${withCommas(m.maxTarget)}. Pass targetValue to pick a different milestone.`,
@@ -601,11 +603,12 @@ function resolveGoal(
       return mkAccount(g.accountMetric.trim(), target, g.name?.trim() || g.accountMetric.trim(), false, "unverified identifier");
     }
 
-    const match = resolveAccountMetric(g.name);
+    const match = resolveAccountPhrase(g.name);
     if (match) {
       // Resolving BY NAME: the canonical display wins (so "qp" → "Quest Points").
       // A deliberate custom label is supported via the explicit-accountMetric path above.
-      return mkAccount(match.enumName, targetFor(match), match.displayName, true, leaguesNote(match));
+      const m = match.metric;
+      return mkAccount(m.enumName, targetFor(m, match.impliedTarget), m.displayName, true, leaguesNote(m));
     }
     const suggestions = searchAccountMetrics(g.name, 5);
     const didYouMean = suggestions.length
