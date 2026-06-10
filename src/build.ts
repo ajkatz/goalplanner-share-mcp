@@ -33,6 +33,7 @@ import {
   isKnownDiaryVarbit,
   DIARY_AREAS,
 } from "./refdata/diaries.js";
+import { resolveQuest, isKnownQuestEnum, searchQuests } from "./refdata/quests.js";
 
 /** GoalType → the label the plugin shows on a goal card. */
 const TYPE_LABEL: Record<string, string> = {
@@ -50,7 +51,7 @@ const TYPE_LABEL: Record<string, string> = {
 const withCommas = (n: number): string => n.toLocaleString("en-US");
 
 /** Kinds the typed core fully validates today (everything else → CUSTOM fallback). */
-export const TYPED_CORE: GoalType[] = ["SKILL", "BOSS", "ITEM_GRIND", "DIARY", "CUSTOM"];
+export const TYPED_CORE: GoalType[] = ["SKILL", "BOSS", "ITEM_GRIND", "DIARY", "QUEST", "CUSTOM"];
 
 export interface GoalSpec {
   /** Caller label used to wire requires/orRequires; defaults to the goal's index. */
@@ -472,6 +473,59 @@ function resolveGoal(
         `Use an "<Area> <Tier>" name (areas: ${DIARY_AREAS.join(", ")}; tiers: Easy/Medium/Hard/Elite).`,
     );
     return custom(g, ref, id, "diary not recognized");
+  }
+
+  // QUEST (typed core) ----------------------------------------------------
+  // Tracks via Quest.valueOf(questName) on the recipient — the wire value must
+  // be the RuneLite enum CONSTANT (e.g. DRAGON_SLAYER_II), never the display
+  // name. Resolve from an explicit questName (validated) or the goal name.
+  if (rawType === "quest" || asGoalType(g.type) === "QUEST") {
+    const mkQuest = (enumName: string, name: string, tracked: boolean, note?: string) => {
+      const dto: GoalShareDto = { ref, type: "QUEST", name, questName: enumName, targetValue: 1 };
+      if (g.description?.trim()) dto.description = g.description.trim();
+      if (g.wikiUrl?.trim()) dto.wikiUrl = g.wikiUrl.trim();
+      if (g.optional) dto.optional = true;
+      const res: ResolvedGoal = {
+        ref,
+        id,
+        type: "QUEST",
+        name,
+        detail: "Quest",
+        tracked,
+        requires: [],
+        orRequires: [],
+      };
+      if (note) res.note = note;
+      return { dto, res };
+    };
+
+    if (g.questName?.trim()) {
+      const known = isKnownQuestEnum(g.questName);
+      if (known) {
+        return mkQuest(known.enumName, g.name?.trim() || known.displayName, true);
+      }
+      warnings.push(
+        `goal "${id}": questName "${g.questName}" is not a RuneLite Quest enum constant — emitted ` +
+          `UNVERIFIED (the recipient's QuestTracker only auto-tracks exact constants like DRAGON_SLAYER_I).`,
+      );
+      return mkQuest(g.questName.trim(), g.name?.trim() || g.questName.trim(), false, "unverified identifier");
+    }
+
+    const match = resolveQuest(g.name);
+    if (match) {
+      // Resolving BY NAME: the canonical display wins (so "ds2" → "Dragon Slayer II").
+      // A deliberate custom label is supported via the explicit-questName path above.
+      return mkQuest(match.enumName, match.displayName, true);
+    }
+    const suggestions = searchQuests(g.name, 5);
+    const didYouMean = suggestions.length
+      ? ` Closest matches: ${suggestions.map((s) => `${s.displayName} (${s.enumName})`).join(", ")}.`
+      : "";
+    warnings.push(
+      `goal "${id}": quest "${g.name ?? ""}" not recognized — emitted as CUSTOM (won't auto-track).` +
+        didYouMean,
+    );
+    return custom(g, ref, id, "quest not recognized");
   }
 
   // Other GoalTypes: Phase 1 has no validation dataset. Pass through if the

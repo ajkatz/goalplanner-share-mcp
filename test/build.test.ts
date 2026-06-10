@@ -66,13 +66,13 @@ describe("buildBundle — BOSS typed core", () => {
 });
 
 describe("buildBundle — Phase 2 types", () => {
-  it("passes through an explicit quest identifier as unverified (not tracked)", () => {
+  it("tracks an explicit valid quest enum constant (typed core since Phase 2)", () => {
     const { bundle, resolved, warnings } = buildBundle(
       spec([{ type: "quest", name: "Dragon Slayer II", questName: "DRAGON_SLAYER_II" }]),
     );
     expect(bundle.goals[0]).toMatchObject({ type: "QUEST", questName: "DRAGON_SLAYER_II" });
-    expect(resolved[0]!.tracked).toBe(false);
-    expect(warnings.join(" ")).toMatch(/UNVERIFIED/);
+    expect(resolved[0]!.tracked).toBe(true);
+    expect(warnings).toHaveLength(0);
   });
 
   it("falls back to CUSTOM when a Phase-2 type has no identifier", () => {
