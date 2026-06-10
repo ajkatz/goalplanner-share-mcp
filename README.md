@@ -44,10 +44,10 @@ codes this tool produces, and this tool decodes codes the plugin produces).
 
 | Status | Types | Notes |
 |---|---|---|
-| ✅ Typed core (auto-tracks) | `SKILL`, `BOSS`, `ITEM_GRIND`, `DIARY`, `CUSTOM` | SKILL by level or XP (all 23 skills); BOSS by name (all 89 tracked bosses + aliases), KC target defaults to 1; ITEM_GRIND by item name against the full OSRS item table (or explicit `itemId`); DIARY by "<Area> <Tier>" name across 12 areas × 4 tiers (or explicit known `varbitId`) |
+| ✅ Typed core (auto-tracks) | `SKILL`, `BOSS`, `ITEM_GRIND`, `DIARY`, `QUEST`, `ACCOUNT`, `COMBAT_ACHIEVEMENT`, `CUSTOM` | SKILL by level or XP (all 23 skills); BOSS by name (all 89 tracked bosses + aliases), KC target defaults to 1; ITEM_GRIND by item name against the full OSRS item table (or explicit `itemId`); DIARY by "<Area> <Tier>" name across 12 areas × 4 tiers (or explicit known `varbitId`); QUEST by display name/abbreviation (209 quests+miniquests, wire carries the RuneLite `Quest` enum constant); ACCOUNT by metric name/shorthand (14 plugin `AccountMetric`s, target validated against the plugin's range, missing target = max); COMBAT_ACHIEVEMENT by exact task name (637 tasks, wire carries `caTaskId` 0–639, tier sprite + description match in-game-created goals) |
 | 🧩 Group expansion (one phrase → many goals) | item sets/loadouts, boss & diary groups | `full torva` → 3, `maxed melee setup` → 9; `GWD` → 4 bosses, `Dagannoth Kings` → 3, `all bosses` → 89; `all elite diaries` → 12, `all Ardougne diaries` → 4, `all diaries` → 48 |
-| 🔶 Passthrough (unverified) | `QUEST`, `ACCOUNT`, `COMBAT_ACHIEVEMENT` | emit if you supply the explicit identifier (`questName`, `accountMetric`, `caTaskId`); otherwise CUSTOM fallback |
-| 🗺️ Roadmap | Phase 3: validated QUEST/ACCOUNT/CA from generated reference data | |
+| 🔶 Passthrough (unverified) | unknown `questName` / `accountMetric` / `caTaskId` / `varbitId` / `itemId` identifiers | emitted as supplied with an UNVERIFIED warning; unresolvable names fall back to CUSTOM with did-you-mean suggestions |
+| 🗺️ Roadmap | CA tier groups (`all easy CAs`), quest groups (`all f2p quests`) | |
 
 Boss names are generated from the plugin's `BossKillData` via `npm run gen:bosses`
 (reads `$GOAL_PLANNER_REPO`). The item table is generated from the OSRS cache
@@ -72,6 +72,20 @@ of rancour), resolved to ids via the wiki's prices-mapping API; the weapon + cap
 because the wiki ranks weapons by raw bonus, which picks slow non-DPS weapons (Zombie axe, Kodai
 wand). Loadout member ids can be newer than the objtypes snapshot, so they're treated as known.
 
+The quest table is generated via `npm run gen:quests`, which **runs the real RuneLite `Quest`
+enum** (`values()`/`name()`/`getName()`) from the version-matched `runelite-api` jar in the local
+gradle cache — the recipient's QuestTracker does `Quest.valueOf(questName)`, so the wire must carry
+the enum **constant** (`DRAGON_SLAYER_II`), and running the enum keeps the constant↔display pairing
+from ever drifting. The account-metric table (`npm run gen:accounts`) parses the plugin's
+`AccountMetric.java` (the tracker's `AccountMetric.valueOf` constants + each metric's sensible
+target range + leagues flags). The CA table (`npm run gen:cas`, needs network) fetches the OSRS
+Wiki `combat_achievement` bucket — the **same table the plugin's `WikiCaRepository` loads** —
+where the bucket `id` is the bit index (0–639) into the `CA_TASK_COMPLETED` varplayers.
+
+Cross-language parity for all three Phase-2 types is proven the same way as Phase 1: the plugin's
+real `ShareCodec` decoded a TS-crafted code and `Quest.valueOf` / `AccountMetric.valueOf` /
+the caTaskId range check resolved on the Java side (throwaway JUnit test, removed after the run).
+
 ## Tools
 
 - **`craft_import_string`** — `{ mode, sectionName?, sectionColorRgb?, sharedBy?, goals[], confirm? }`.
@@ -86,8 +100,9 @@ wand). Loadout member ids can be newer than the objtypes snapshot, so they're tr
 `id`, `type` (`"skill"` / `"custom"` / a GoalType name), `name`, `description`, `requires[]`,
 `orRequires[]`, and per kind: skills use `skill` + `level` or `xp`; CUSTOM uses `colorRgb`,
 `tooltip`; ITEM_GRIND uses `name` (resolved to an `itemId`) or an explicit `itemId`, plus
-`targetValue` (quantity); passthrough types take `questName` / `bossName` / `accountMetric` /
-`varbitId` / `caTaskId` / `targetValue`.
+`targetValue` (quantity); QUEST uses `name` (resolved) or explicit `questName` (enum constant);
+ACCOUNT uses `name` or explicit `accountMetric` plus `targetValue`; COMBAT_ACHIEVEMENT uses `name`
+(exact task) or explicit `caTaskId`.
 
 ## Develop
 
