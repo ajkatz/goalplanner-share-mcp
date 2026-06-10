@@ -16,6 +16,23 @@ import {
 } from "./bundle.js";
 import { resolveSkill, xpForLevel, levelForXp, SKILLS, MAX_LEVEL } from "./refdata/skills.js";
 import { resolveBoss } from "./refdata/bosses.js";
+import { resolveBossGroup } from "./refdata/boss-groups.js";
+import {
+  resolveItem,
+  itemNameById,
+  isKnownItemId,
+  searchItems,
+  resolveItemGroup,
+  resolveItemsPhrase,
+  isMultiItemPhrase,
+} from "./refdata/items.js";
+import {
+  resolveDiary,
+  resolveDiaryGroup,
+  diaryTrackingByVarbit,
+  isKnownDiaryVarbit,
+  DIARY_AREAS,
+} from "./refdata/diaries.js";
 
 /** GoalType → the label the plugin shows on a goal card. */
 const TYPE_LABEL: Record<string, string> = {
@@ -33,7 +50,7 @@ const TYPE_LABEL: Record<string, string> = {
 const withCommas = (n: number): string => n.toLocaleString("en-US");
 
 /** Kinds the typed core fully validates today (everything else → CUSTOM fallback). */
-export const TYPED_CORE: GoalType[] = ["SKILL", "BOSS", "CUSTOM"];
+export const TYPED_CORE: GoalType[] = ["SKILL", "BOSS", "ITEM_GRIND", "DIARY", "CUSTOM"];
 
 export interface GoalSpec {
   /** Caller label used to wire requires/orRequires; defaults to the goal's index. */
@@ -99,9 +116,70 @@ const asGoalType = (s: string): GoalType | null => {
   return (GOAL_TYPES as readonly string[]).includes(up) ? (up as GoalType) : null;
 };
 
+const isItemType = (t: string | undefined): boolean => {
+  const r = (t ?? "").trim().toLowerCase();
+  return r === "item" || r === "item_grind";
+};
+
+const subId = (id: string | undefined, k: number): string | undefined => (id ? `${id}#${k + 1}` : undefined);
+
+/**
+ * Pre-pass: fan a single "group" goal out into one goal per member, each carrying
+ * an explicit identifier so it resolves verified. Covers ITEM sets/loadouts/
+ * phrases ("full torva", "maxed melee", "masori + tbow"), BOSS groups ("GWD",
+ * "all bosses"), and DIARY groups ("all elite diaries", "all Ardougne diaries").
+ * Non-group goals — and goals where the caller already pinned an identifier —
+ * pass through untouched.
+ */
+function expandGroupGoals(goals: GoalSpec[], warnings: string[]): GoalSpec[] {
+  const out: GoalSpec[] = [];
+  for (const g of goals) {
+    const type = (g.type ?? "").trim().toLowerCase();
+
+    // ITEM — sets / loadouts / "+"-phrases.
+    if (isItemType(g.type) && g.name && (g.itemId === undefined || g.itemId <= 0) && isMultiItemPhrase(g.name)) {
+      const { items, unresolved } = resolveItemsPhrase(g.name);
+      if (items.length > 0) {
+        items.forEach((m, k) => out.push({ ...g, name: m.name, itemId: m.itemId, id: subId(g.id, k) }));
+        for (const u of unresolved) {
+          warnings.push(`goal "${g.id ?? g.name}": couldn't resolve "${u}" within "${g.name}" — left out of the expansion.`);
+        }
+        const label = resolveItemGroup(g.name)?.name;
+        if (label) warnings.push(`goal "${g.id ?? g.name}": expanded "${g.name}" into the ${items.length}-piece ${label}.`);
+        continue;
+      }
+    }
+
+    // BOSS — named collections ("GWD", "Dagannoth Kings", "all bosses").
+    if ((type === "boss" || asGoalType(g.type) === "BOSS") && g.name && !g.bossName?.trim()) {
+      const grp = resolveBossGroup(g.name);
+      if (grp && grp.members.length > 0) {
+        grp.members.forEach((b, k) => out.push({ ...g, name: b, bossName: b, id: subId(g.id, k) }));
+        warnings.push(`goal "${g.id ?? g.name}": expanded "${g.name}" into ${grp.members.length} ${grp.name} boss goals.`);
+        continue;
+      }
+    }
+
+    // DIARY — "all …" tier/area collections.
+    if ((type === "diary" || asGoalType(g.type) === "DIARY") && g.name && (g.varbitId === undefined || g.varbitId <= 0)) {
+      const grp = resolveDiaryGroup(g.name);
+      if (grp && grp.members.length > 0) {
+        grp.members.forEach((m, k) =>
+          out.push({ ...g, name: m.name, varbitId: m.varbitId, targetValue: m.targetValue, id: subId(g.id, k) }),
+        );
+        warnings.push(`goal "${g.id ?? g.name}": expanded "${g.name}" into ${grp.members.length} goals (${grp.name}).`);
+        continue;
+      }
+    }
+
+    out.push(g);
+  }
+  return out;
+}
+
 export function buildBundle(spec: ShareSpec): BuildResult {
   const warnings: string[] = [];
-  const goals = spec.goals ?? [];
+  const goals = expandGroupGoals(spec.goals ?? [], warnings);
   if (goals.length === 0) {
     warnings.push("no goals provided — the bundle would be empty and the plugin rejects empty imports.");
   }
@@ -292,6 +370,108 @@ function resolveGoal(
     }
     warnings.push(`goal "${id}": boss goal needs a bossName — emitted as CUSTOM.`);
     return custom(g, ref, id, "no boss name");
+  }
+
+  // ITEM_GRIND (typed core) ----------------------------------------------
+  // Tracks by EXACT itemId. Resolve from an explicit itemId (validated against
+  // the OSRS item corpus) or from the item name; a hit auto-tracks, an unknown
+  // explicit id passes through unverified, and an unresolvable name falls to CUSTOM.
+  if (rawType === "item_grind" || rawType === "item" || asGoalType(g.type) === "ITEM_GRIND") {
+    const target = g.targetValue && g.targetValue > 0 ? g.targetValue : 1; // default 1
+    const mkItem = (itemId: number, name: string, tracked: boolean, note?: string) => {
+      const dto: GoalShareDto = { ref, type: "ITEM_GRIND", name, itemId, targetValue: target };
+      if (g.description?.trim()) dto.description = g.description.trim();
+      if (g.wikiUrl?.trim()) dto.wikiUrl = g.wikiUrl.trim();
+      if (g.optional) dto.optional = true;
+      const res: ResolvedGoal = {
+        ref,
+        id,
+        type: "ITEM_GRIND",
+        name,
+        detail: `×${withCommas(target)}`,
+        tracked,
+        requires: [],
+        orRequires: [],
+      };
+      if (note) res.note = note;
+      return { dto, res };
+    };
+
+    if (g.itemId !== undefined && g.itemId > 0) {
+      const known = itemNameById(g.itemId);
+      if (known || isKnownItemId(g.itemId)) {
+        return mkItem(g.itemId, g.name?.trim() || known || `Item ${g.itemId}`, true);
+      }
+      warnings.push(
+        `goal "${id}": itemId ${g.itemId} is not in the known item table — emitted UNVERIFIED ` +
+          `(auto-tracks only if it is a real item id on the recipient's account).`,
+      );
+      return mkItem(g.itemId, g.name?.trim() || `Item ${g.itemId}`, false, "unverified identifier");
+    }
+
+    const match = resolveItem(g.name);
+    if (match) {
+      // Resolving BY NAME: the canonical display wins (so "bp" → "Toxic blowpipe").
+      // A deliberate custom label is supported via the explicit-itemId path above.
+      return mkItem(match.itemId, match.name, true);
+    }
+    const suggestions = searchItems(g.name, 5);
+    const didYouMean = suggestions.length
+      ? ` Closest matches: ${suggestions.map((s) => `${s.name} (itemId ${s.itemId})`).join(", ")}.`
+      : "";
+    warnings.push(
+      `goal "${id}": item "${g.name ?? ""}" not recognized — emitted as CUSTOM (won't auto-track). ` +
+        `Supply an itemId (resolve it via the OSRS Wiki) to make it track.${didYouMean}`,
+    );
+    return custom(g, ref, id, "item not recognized");
+  }
+
+  // DIARY (typed core) ---------------------------------------------------
+  // Tracks by varbitId + targetValue. Resolve from an explicit (known) varbitId
+  // or from an area+tier name ("Ardougne Elite", "Varrock hard diary").
+  if (rawType === "diary" || asGoalType(g.type) === "DIARY") {
+    const mkDiary = (varbitId: number, targetValue: number, name: string, tracked: boolean, note?: string) => {
+      const dto: GoalShareDto = { ref, type: "DIARY", name, varbitId, targetValue };
+      if (g.description?.trim()) dto.description = g.description.trim();
+      if (g.wikiUrl?.trim()) dto.wikiUrl = g.wikiUrl.trim();
+      if (g.optional) dto.optional = true;
+      const res: ResolvedGoal = {
+        ref,
+        id,
+        type: "DIARY",
+        name,
+        detail: `varbit ${varbitId}`,
+        tracked,
+        requires: [],
+        orRequires: [],
+      };
+      if (note) res.note = note;
+      return { dto, res };
+    };
+
+    if (g.varbitId !== undefined && g.varbitId > 0) {
+      const known = diaryTrackingByVarbit(g.varbitId);
+      if (known) {
+        return mkDiary(g.varbitId, known.targetValue, g.name?.trim() || known.name, true);
+      }
+      if (isKnownDiaryVarbit(g.varbitId)) {
+        return mkDiary(g.varbitId, g.targetValue && g.targetValue > 0 ? g.targetValue : 1, g.name?.trim() || `Diary`, true);
+      }
+      warnings.push(
+        `goal "${id}": varbitId ${g.varbitId} is not a known diary completion varbit — emitted UNVERIFIED.`,
+      );
+      return mkDiary(g.varbitId, g.targetValue && g.targetValue > 0 ? g.targetValue : 1, g.name?.trim() || `Diary`, false, "unverified identifier");
+    }
+
+    const match = resolveDiary(g.name);
+    if (match) {
+      return mkDiary(match.varbitId, match.targetValue, g.name?.trim() || match.name, true);
+    }
+    warnings.push(
+      `goal "${id}": diary "${g.name ?? ""}" not recognized — emitted as CUSTOM (won't auto-track). ` +
+        `Use an "<Area> <Tier>" name (areas: ${DIARY_AREAS.join(", ")}; tiers: Easy/Medium/Hard/Elite).`,
+    );
+    return custom(g, ref, id, "diary not recognized");
   }
 
   // Other GoalTypes: Phase 1 has no validation dataset. Pass through if the

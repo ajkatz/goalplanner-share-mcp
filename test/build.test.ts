@@ -76,7 +76,7 @@ describe("buildBundle — Phase 2 types", () => {
   });
 
   it("falls back to CUSTOM when a Phase-2 type has no identifier", () => {
-    const { bundle, warnings } = buildBundle(spec([{ type: "diary", name: "Varrock Elite" }]));
+    const { bundle, warnings } = buildBundle(spec([{ type: "account", name: "Max total level" }]));
     expect(bundle.goals[0]!.type).toBe("CUSTOM");
     expect(warnings.join(" ")).toMatch(/CUSTOM/);
   });

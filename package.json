@@ -16,7 +16,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "gen:bosses": "node scripts/gen-bosses.mjs"
+    "gen:bosses": "node scripts/gen-bosses.mjs",
+    "gen:items": "node scripts/gen-items.mjs",
+    "gen:diaries": "node scripts/gen-diaries.mjs",
+    "gen:loadouts": "node scripts/gen-loadouts.mjs"
   },
   "engines": {
     "node": ">=18"

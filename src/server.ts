@@ -11,6 +11,8 @@ import { encode, decode, ShareFormatError } from "./codec.js";
 import { describeBundle } from "./describe.js";
 import { SKILLS } from "./refdata/skills.js";
 import { BOSSES } from "./refdata/bosses.js";
+import { ITEM_COUNT } from "./refdata/items.js";
+import { DIARY_COUNT } from "./refdata/diaries.js";
 
 const goalShape = z.object({
   id: z.string().optional().describe("Stable label for this goal, used by other goals' requires/orRequires. Defaults to the index."),
@@ -132,11 +134,22 @@ export function createServer(): McpServer {
         "  " + Object.values(SKILLS).join(", "),
         "",
         `BOSS accepts ${BOSSES.length} boss names (case-insensitive, e.g. "Zulrah", "TzKal-Zuk"; aliases`,
-        '  like "the inferno", "jad"), KC target defaults to 1. Unknown names emit as UNVERIFIED.',
+        '  like "the inferno", "jad"), KC target defaults to 1. GROUPS fan out: "GWD" → 4, "Dagannoth',
+        '  Kings" → 3, "wilderness bosses", "all bosses". Unknown names emit as UNVERIFIED.',
+        "",
+        `ITEM_GRIND resolves item names against ${ITEM_COUNT.toLocaleString("en-US")} OSRS items (e.g. "Magic`,
+        '  logs", "Abyssal whip"; nicknames like "tbow", "bp", "shadow"). Quantity target defaults to 1.',
+        '  SETS, LOADOUTS and PHRASES fan out into one goal per piece: "full torva" → 3, "full masori +',
+        '  tbow" → 4, "maxed melee setup" → 9 (also maxed ranged/mage). Pass an explicit itemId to skip',
+        "  name resolution; an unresolvable name with no id → CUSTOM.",
+        "",
+        `DIARY resolves an "<Area> <Tier>" name across ${DIARY_COUNT} achievement-diary tiers (12 areas`,
+        "  × Easy/Medium/Hard/Elite, e.g. \"Ardougne Elite\", \"Varrock hard diary\"; area aliases like",
+        '  "Lumbridge & Draynor" / "Western Provinces"). GROUPS fan out: "all elite diaries" → 12, "all',
+        '  Ardougne diaries" → 4, "all diaries" → 48. Tracks by varbit; Karamja Easy/Med/Hard by task count.',
         "",
         "Phase 2 (not yet validated — pass an explicit identifier to emit unverified, else CUSTOM fallback):",
-        "  - QUEST (questName), DIARY (varbitId+targetValue), ACCOUNT (accountMetric),",
-        "    ITEM_GRIND (itemId+targetValue), COMBAT_ACHIEVEMENT (caTaskId)",
+        "  - QUEST (questName), ACCOUNT (accountMetric), COMBAT_ACHIEVEMENT (caTaskId)",
         "",
         "CUSTOM: always available; never auto-tracks (manual check-off).",
       ];

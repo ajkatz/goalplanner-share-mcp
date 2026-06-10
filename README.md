@@ -44,12 +44,33 @@ codes this tool produces, and this tool decodes codes the plugin produces).
 
 | Status | Types | Notes |
 |---|---|---|
-| ✅ Typed core (auto-tracks) | `SKILL`, `BOSS`, `CUSTOM` | SKILL by level or XP (all 23 skills); BOSS by name (all 89 tracked bosses + aliases like "the inferno"/"jad"), KC target defaults to 1 |
-| 🔶 Passthrough (unverified) | `QUEST`, `DIARY`, `ACCOUNT`, `ITEM_GRIND`, `COMBAT_ACHIEVEMENT` | emit if you supply the explicit identifier (`questName`, `varbitId`, …); otherwise CUSTOM fallback |
-| 🗺️ Roadmap | Phase 2: validated QUEST/DIARY from generated reference data; Phase 3: ACCOUNT/CA | |
+| ✅ Typed core (auto-tracks) | `SKILL`, `BOSS`, `ITEM_GRIND`, `DIARY`, `CUSTOM` | SKILL by level or XP (all 23 skills); BOSS by name (all 89 tracked bosses + aliases), KC target defaults to 1; ITEM_GRIND by item name against the full OSRS item table (or explicit `itemId`); DIARY by "<Area> <Tier>" name across 12 areas × 4 tiers (or explicit known `varbitId`) |
+| 🧩 Group expansion (one phrase → many goals) | item sets/loadouts, boss & diary groups | `full torva` → 3, `maxed melee setup` → 9; `GWD` → 4 bosses, `Dagannoth Kings` → 3, `all bosses` → 89; `all elite diaries` → 12, `all Ardougne diaries` → 4, `all diaries` → 48 |
+| 🔶 Passthrough (unverified) | `QUEST`, `ACCOUNT`, `COMBAT_ACHIEVEMENT` | emit if you supply the explicit identifier (`questName`, `accountMetric`, `caTaskId`); otherwise CUSTOM fallback |
+| 🗺️ Roadmap | Phase 3: validated QUEST/ACCOUNT/CA from generated reference data | |
 
 Boss names are generated from the plugin's `BossKillData` via `npm run gen:bosses`
-(reads `$GOAL_PLANNER_REPO`), so they stay in sync.
+(reads `$GOAL_PLANNER_REPO`). The item table is generated from the OSRS cache
+`objtypes.txt` (JayArrowz `mcp-osrs`) via `npm run gen:items` (auto-discovers the
+mcp-osrs data dir, or set `$OSRS_DATA_DIR`) — `placeholder_`/`cert_` variants filtered
+out since the plugin tracks an exact `itemId`. Item names that diverge from their
+internal codename (potions, `Cannonball`, …) resolve via a curated alias map or by you
+passing an `itemId` you looked up on the OSRS Wiki. Community **nicknames** (`tbow`, `bp`,
+`shadow`, `scythe`) and **armour sets** (`full torva`, `fortified masori`) are recognised too;
+**loadout presets** (`maxed melee setup`, `maxed ranged`, `maxed mage`) expand to a full BiS-ish
+kit; and a `+`/`and`-joined **phrase** (`full masori + tbow`, `maxed melee + shadow`) fans out into
+one auto-tracking item goal per piece (visible in the preview before you confirm).
+
+The diary table is generated via `npm run gen:diaries`, which **joins two sources**: the
+plugin's `AchievementDiaryData` (area/tier structure + required values) with the numeric
+varbit ids from the OSRS cache `varbittypes.txt` — the symbolic `VarbitID.<AREA>_DIARY_<TIER>_COMPLETE`
+constants are matched by name to their cache ids (the runtime varbit the recipient reads).
+
+The loadout presets are generated via `npm run gen:loadouts` (needs network), a **hybrid**: armour
+slots come from the OSRS Wiki `Armour/Highest bonuses` tables (so they stay current — e.g. Amulet
+of rancour), resolved to ids via the wiki's prices-mapping API; the weapon + cape are **curated**
+because the wiki ranks weapons by raw bonus, which picks slow non-DPS weapons (Zombie axe, Kodai
+wand). Loadout member ids can be newer than the objtypes snapshot, so they're treated as known.
 
 ## Tools
 
@@ -64,8 +85,9 @@ Boss names are generated from the plugin's `BossKillData` via `npm run gen:bosse
 
 `id`, `type` (`"skill"` / `"custom"` / a GoalType name), `name`, `description`, `requires[]`,
 `orRequires[]`, and per kind: skills use `skill` + `level` or `xp`; CUSTOM uses `colorRgb`,
-`tooltip`; passthrough types take `questName` / `bossName` / `accountMetric` / `varbitId` /
-`itemId` / `caTaskId` / `targetValue`.
+`tooltip`; ITEM_GRIND uses `name` (resolved to an `itemId`) or an explicit `itemId`, plus
+`targetValue` (quantity); passthrough types take `questName` / `bossName` / `accountMetric` /
+`varbitId` / `caTaskId` / `targetValue`.
 
 ## Develop
 
