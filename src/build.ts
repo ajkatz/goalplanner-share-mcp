@@ -13,6 +13,8 @@ import {
   type GoalType,
   GOAL_TYPES,
   SCHEMA_VERSION,
+  type SectionShareDto,
+  SCHEMA_VERSION_V1,
 } from "./bundle.js";
 import { resolveSkill, xpForLevel, levelForXp, SKILLS, MAX_LEVEL } from "./refdata/skills.js";
 import { resolveBoss } from "./refdata/bosses.js";
@@ -100,12 +102,26 @@ export interface GoalSpec {
   orRequires?: string[];
 }
 
+export interface SectionSpec {
+  /** Section display name; omit for loose goals or default-target. */
+  name?: string;
+  sectionColorRgb?: number;
+  /** Import into the recipient's DEFAULT plan, reusing existing equivalents
+   *  (the same dedup the in-game Add Goal flow applies). */
+  targetDefault?: boolean;
+  goals: GoalSpec[];
+}
+
 export interface ShareSpec {
-  mode: "section" | "goals";
+  mode?: "section" | "goals";
   sectionName?: string;
   sectionColorRgb?: number;
   sharedBy?: string;
-  goals: GoalSpec[];
+  /** Single-section form (v1 wire — maximum compatibility). */
+  goals?: GoalSpec[];
+  /** Multi-section form: one code carrying several sections (GPSHARE2 wire;
+   *  recipients need a recent plugin build). Ignores mode/sectionName/goals. */
+  sections?: SectionSpec[];
 }
 
 export interface ResolvedGoal {
@@ -195,6 +211,9 @@ function expandGroupGoals(goals: GoalSpec[], warnings: string[]): GoalSpec[] {
 }
 
 export function buildBundle(spec: ShareSpec): BuildResult {
+  if (spec.sections && spec.sections.length > 0) {
+    return buildMultiSectionBundle(spec);
+  }
   const warnings: string[] = [];
   const goals = expandGroupGoals(spec.goals ?? [], warnings);
   if (goals.length === 0) {
@@ -281,7 +300,7 @@ export function buildBundle(spec: ShareSpec): BuildResult {
     warnings.push('mode "section" without a sectionName — the plugin will name it "Shared goals".');
   }
   const bundle: ShareBundle = {
-    v: SCHEMA_VERSION,
+    v: SCHEMA_VERSION_V1,
     kind,
     sectionColorRgb: spec.sectionColorRgb ?? -1,
     goals: dtos,
@@ -290,6 +309,76 @@ export function buildBundle(spec: ShareSpec): BuildResult {
   if (kind === "SECTION" && spec.sectionName?.trim()) bundle.sectionName = spec.sectionName.trim();
 
   return { bundle, resolved, warnings, preview: renderPreview(spec, resolved, warnings) };
+}
+
+/**
+ * Multi-section build: each section runs the full single-section pipeline
+ * (group fan-out, typed resolution, section-scoped relation refs), then the
+ * results are assembled into a v2 bundle. The codec picks the GPSHARE2 wire
+ * automatically (or GPSHARE1 if this somehow reduces to one plain section).
+ */
+function buildMultiSectionBundle(spec: ShareSpec): BuildResult {
+  const sections: SectionShareDto[] = [];
+  const resolvedAll: ResolvedGoal[] = [];
+  const warnings: string[] = [];
+  const previews: string[] = [];
+
+  (spec.sections ?? []).forEach((sec, i) => {
+    const label = sec.targetDefault ? "Default (your main plan)" : sec.name?.trim() || `Section ${i + 1}`;
+    const sub = buildBundle({
+      mode: "section",
+      sectionName: sec.targetDefault ? "Default" : sec.name,
+      sectionColorRgb: sec.sectionColorRgb,
+      goals: sec.goals,
+    });
+    for (const w of sub.warnings) warnings.push(`[${label}] ${w}`);
+
+    const dto: SectionShareDto = {
+      colorRgb: sec.sectionColorRgb ?? -1,
+      goals: sub.bundle.goals,
+    };
+    if (!sec.targetDefault && sec.name?.trim()) dto.name = sec.name.trim();
+    if (sec.targetDefault) dto.targetDefault = true;
+    sections.push(dto);
+    resolvedAll.push(...sub.resolved);
+
+    const header = sec.targetDefault
+      ? `═══ ${label} — goals land in YOUR Default plan; ones you already track are reused ═══`
+      : `═══ Section ${i + 1}/${spec.sections!.length}: "${label}" ═══`;
+    // Drop the sub-preview's own banner + warning block; the combined preview
+    // gets one banner and one warning list.
+    const body = sub.preview
+      .split("\n")
+      .filter((l) => !l.startsWith("┌") && !l.startsWith("│") && !l.startsWith("└"))
+      .join("\n")
+      .split("\n⚠ Warnings:")[0]!
+      .replace(/^\n+/, "")
+      .replace(/\n+$/, "");
+    previews.push(`${header}\n${body}`);
+  });
+
+  const bundle: ShareBundle = {
+    v: SCHEMA_VERSION,
+    kind: "GOALS",
+    sectionColorRgb: -1,
+    goals: [],
+    sections,
+  };
+  if (spec.sharedBy?.trim()) bundle.sharedBy = spec.sharedBy.trim();
+
+  const trackedCount = resolvedAll.filter((r) => r.tracked).length;
+  const head: string[] = [];
+  head.push("┌─ Goal Planner import preview (multi-section) ─────");
+  head.push(`│ ${sections.length} sections · ${resolvedAll.length} goal(s) · ${trackedCount} auto-track · ${resolvedAll.length - trackedCount} manual/unverified`);
+  if (spec.sharedBy?.trim()) head.push(`│ Shared by: ${spec.sharedBy.trim()}`);
+  head.push("│ Multi-section codes need a recent plugin build to import (GPSHARE2).");
+  head.push("└───────────────────────────────────────────────");
+  const parts = [head.join("\n"), ...previews];
+  if (warnings.length) {
+    parts.push("⚠ Warnings:\n" + warnings.map((w) => `  - ${w}`).join("\n"));
+  }
+
+  return { bundle, resolved: resolvedAll, warnings, preview: parts.join("\n\n") };
 }
 
 function resolveGoal(

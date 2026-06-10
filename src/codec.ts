@@ -9,9 +9,16 @@
  * the base64url run that follows.
  */
 import { gzipSync, gunzipSync } from "node:zlib";
-import { type ShareBundle, SCHEMA_VERSION } from "./bundle.js";
+import {
+  type ShareBundle,
+  SCHEMA_VERSION,
+  SCHEMA_VERSION_V1,
+  effectiveSections,
+  needsV2,
+} from "./bundle.js";
 
-export const PREFIX = `GPSHARE${SCHEMA_VERSION}:`;
+export const PREFIX = `GPSHARE${SCHEMA_VERSION_V1}:`;
+export const PREFIX_V2 = `GPSHARE${SCHEMA_VERSION}:`;
 
 export class ShareFormatError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -20,14 +27,44 @@ export class ShareFormatError extends Error {
   }
 }
 
-/** Encode a bundle to a prefixed, gzipped, URL-safe-Base64 string. */
+/**
+ * Encode a bundle to a prefixed, gzipped, URL-safe-Base64 string. The wire
+ * version follows the content (mirrors the plugin's normalizeForWire): plain
+ * single-section bundles stay on the v1 wire so older plugin builds import
+ * them; multi-section or default-target bundles emit GPSHARE2.
+ */
 export function encode(bundle: ShareBundle): string {
   if (!bundle) {
     throw new ShareFormatError("nothing to share");
   }
-  const json = Buffer.from(JSON.stringify(bundle), "utf8");
+  const secs = effectiveSections(bundle);
+  let wire: ShareBundle;
+  let prefix: string;
+  if (needsV2(bundle)) {
+    wire = {
+      v: SCHEMA_VERSION,
+      kind: "GOALS",
+      sectionColorRgb: -1,
+      goals: [],
+      sections: secs,
+    };
+    if (bundle.sharedBy) wire.sharedBy = bundle.sharedBy;
+    prefix = PREFIX_V2;
+  } else {
+    const only = secs[0]!;
+    wire = {
+      v: SCHEMA_VERSION_V1,
+      kind: only.name !== undefined ? "SECTION" : "GOALS",
+      sectionColorRgb: only.colorRgb ?? -1,
+      goals: only.goals,
+    };
+    if (only.name !== undefined) wire.sectionName = only.name;
+    if (bundle.sharedBy) wire.sharedBy = bundle.sharedBy;
+    prefix = PREFIX;
+  }
+  const json = Buffer.from(JSON.stringify(wire), "utf8");
   const gz = gzipSync(json);
-  return PREFIX + gz.toString("base64url");
+  return prefix + gz.toString("base64url");
 }
 
 const isBase64Url = (c: string): boolean =>
@@ -43,11 +80,17 @@ export function decode(text: string): ShareBundle {
   if (text == null || text.trim() === "") {
     throw new ShareFormatError("empty share code");
   }
-  const marker = text.indexOf(PREFIX);
+  // v2 first; both decode.
+  let prefix = PREFIX_V2;
+  let marker = text.indexOf(PREFIX_V2);
+  if (marker < 0) {
+    prefix = PREFIX;
+    marker = text.indexOf(PREFIX);
+  }
   if (marker < 0) {
     throw new ShareFormatError("unrecognised or wrong-version share code");
   }
-  let end = marker + PREFIX.length;
+  let end = marker + prefix.length;
   const start = end;
   while (end < text.length && isBase64Url(text[end]!)) {
     end++;
@@ -70,11 +113,29 @@ export function decode(text: string): ShareBundle {
   } catch (e) {
     throw new ShareFormatError("invalid share payload", { cause: e });
   }
-  if (!bundle || !Array.isArray(bundle.goals)) {
+  if (!bundle) {
     throw new ShareFormatError("empty share payload");
   }
-  if (bundle.v !== SCHEMA_VERSION) {
+  const expected = prefix === PREFIX_V2 ? SCHEMA_VERSION : SCHEMA_VERSION_V1;
+  if (bundle.v !== expected) {
     throw new ShareFormatError(`share code is from an incompatible plugin version (v${bundle.v})`);
+  }
+  if (expected === SCHEMA_VERSION) {
+    if (!Array.isArray(bundle.sections) || bundle.sections.length === 0) {
+      throw new ShareFormatError("empty share payload");
+    }
+    for (const s of bundle.sections) {
+      if (!s || !Array.isArray(s.goals)) {
+        throw new ShareFormatError("invalid share payload");
+      }
+    }
+    // The Java encoder omits the legacy fields on the v2 wire — normalize so
+    // downstream code can rely on them existing.
+    bundle.goals ??= [];
+    bundle.kind ??= "GOALS";
+    bundle.sectionColorRgb ??= -1;
+  } else if (!Array.isArray(bundle.goals)) {
+    throw new ShareFormatError("empty share payload");
   }
   return bundle;
 }

@@ -8,8 +8,12 @@
  * iterates without a null check.
  */
 
-/** Current share-format schema version. The plugin rejects anything else. */
-export const SCHEMA_VERSION = 1 as const;
+/** Current share-format schema version (multi-section). */
+export const SCHEMA_VERSION = 2 as const;
+
+/** Legacy single-section schema version — still emitted for plain
+ *  single-section bundles so older plugin builds import them. */
+export const SCHEMA_VERSION_V1 = 1 as const;
 
 /** GoalType enum names accepted by the plugin importer (unknown → goal skipped). */
 export const GOAL_TYPES = [
@@ -69,6 +73,19 @@ export interface GoalShareDto {
   orRequires?: number[];
 }
 
+/**
+ * One section's worth of goals in a v2 bundle. Relation `ref` indices on the
+ * contained goals are scoped to THIS section's goal list.
+ */
+export interface SectionShareDto {
+  /** Section display name; omitted for loose goals / default-target. */
+  name?: string;
+  colorRgb: number; // -1 = default
+  /** Land in the recipient's DEFAULT plan, reusing existing equivalents. */
+  targetDefault?: boolean;
+  goals: GoalShareDto[];
+}
+
 export interface ShareBundle {
   v: number;
   kind: ShareKind;
@@ -76,4 +93,26 @@ export interface ShareBundle {
   sectionName?: string;
   sectionColorRgb: number; // -1 = default
   goals: GoalShareDto[];
+  /** v2 payloads: one entry per shared section (absent on the v1 wire). */
+  sections?: SectionShareDto[];
+}
+
+/**
+ * Version-neutral view: the v2 section list, or the legacy single-section
+ * fields wrapped as one entry (mirrors the plugin's effectiveSections()).
+ */
+export function effectiveSections(bundle: ShareBundle): SectionShareDto[] {
+  if (bundle.sections && bundle.sections.length > 0) return bundle.sections;
+  const legacy: SectionShareDto = {
+    colorRgb: bundle.sectionColorRgb ?? -1,
+    goals: bundle.goals ?? [],
+  };
+  if (bundle.kind === "SECTION" && bundle.sectionName) legacy.name = bundle.sectionName;
+  return [legacy];
+}
+
+/** True when the bundle needs the v2 wire (multi-section or default-target). */
+export function needsV2(bundle: ShareBundle): boolean {
+  const secs = effectiveSections(bundle);
+  return secs.length > 1 || secs.some((s) => s.targetDefault === true);
 }

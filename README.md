@@ -13,6 +13,12 @@ codes this tool produces, and this tool decodes codes the plugin produces).
 
 - **Two modes**: import as a **new named section**, or as **loose goals** (which land in a
   "Shared goals" section).
+- **Multi-section codes (GPSHARE2)**: pass `sections[]` and ONE code carries several
+  sections — each imports as its own section, in one undo. A section with
+  `targetDefault: true` lands in the recipient's **Default plan** instead, REUSING
+  existing equivalent goals (the in-game add dedup), so re-importing never duplicates.
+  Single-section codes still emit the `GPSHARE1:` wire, which every plugin build imports;
+  multi-section/default-target codes need a recent plugin build.
 - **Simple goals or complex trees**: goals are wired into prerequisite trees (AND via
   `requires`, OR via `orRequires`) by stable `id`. Diamonds and OR-groups are supported.
 - **Hybrid typing**: recognized kinds become **typed, auto-tracking** goals; anything else
@@ -100,7 +106,8 @@ the test names each line so a regression reads as English.
 
 ## Tools
 
-- **`craft_import_string`** — `{ mode, sectionName?, sectionColorRgb?, sharedBy?, goals[], confirm? }`.
+- **`craft_import_string`** — `{ mode?, sectionName?, sectionColorRgb?, sharedBy?, goals[]?, sections[]?, confirm? }`
+  (`sections[]` = multi-section/default-target form; each entry is `{ name?, sectionColorRgb?, targetDefault?, goals[] }`).
   Without `confirm`: human-readable preview + warnings, **no code**. With `confirm: true`:
   the `GPSHARE1:` code.
 - **`decode_import_string`** — `{ code }`. Decodes any `GPSHARE1:` code (even embedded in

@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { gunzipSync } from "node:zlib";
 import { encode, decode, PREFIX, ShareFormatError } from "../src/codec.js";
-import { type ShareBundle, SCHEMA_VERSION } from "../src/bundle.js";
+import { type ShareBundle, SCHEMA_VERSION_V1 } from "../src/bundle.js";
 
 const sample: ShareBundle = {
-  v: SCHEMA_VERSION,
+  v: SCHEMA_VERSION_V1,
   kind: "SECTION",
   sectionName: "Inferno prep",
   sectionColorRgb: -1,
@@ -47,8 +47,10 @@ describe("codec", () => {
   });
 
   it("rejects an incompatible schema version", () => {
-    // A payload whose inner v != 1 (the prefix stays GPSHARE1:); decoder reads it, then version-checks.
-    const code = encode({ ...sample, v: 2 } as ShareBundle);
-    expect(() => decode(code)).toThrow(/incompatible/);
+    // encode() normalizes the version from the bundle shape, so a forged
+    // version has to be smuggled in as a hand-built wire payload.
+    const { gzipSync } = require("node:zlib") as typeof import("node:zlib");
+    const forged = gzipSync(Buffer.from(JSON.stringify({ ...sample, v: 999 }), "utf8")).toString("base64url");
+    expect(() => decode("GPSHARE1:" + forged)).toThrow(/incompatible/);
   });
 });

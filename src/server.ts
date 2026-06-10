@@ -43,13 +43,37 @@ const goalShape = z.object({
   orRequires: z.array(z.string()).optional().describe("ids of goals satisfying this one (OR / any-of)."),
 });
 
+const sectionShape = z.object({
+  name: z.string().optional().describe("Section display name. Omit for loose goals or when targetDefault is set."),
+  sectionColorRgb: z.number().int().optional().describe("Section colour 0xRRGGBB; -1 = default."),
+  targetDefault: z
+    .boolean()
+    .optional()
+    .describe(
+      "Import these goals into the recipient's DEFAULT plan instead of a new section. " +
+        "Existing equivalent goals are REUSED (same dedup as the in-game Add Goal flow) — re-importing never duplicates.",
+    ),
+  goals: z.array(goalShape).describe("Goals for this section. Relation ids are scoped to this section."),
+});
+
 const craftShape = {
-  mode: z.enum(["section", "goals"]).describe('"section" = import as a new named section; "goals" = loose goals (land in a "Shared goals" section).'),
+  mode: z
+    .enum(["section", "goals"])
+    .optional()
+    .describe('"section" = import as a new named section; "goals" = loose goals (land in a "Shared goals" section). Ignored when sections[] is used.'),
   sectionName: z.string().optional().describe('Name for the new section (mode "section").'),
   sectionColorRgb: z.number().int().optional().describe("Section colour 0xRRGGBB; -1 = default."),
   sharedBy: z.string().optional().describe("Attribution shown in the import prompt."),
-  goals: z.array(goalShape).describe("The goals to encode. Relations are wired by id via requires/orRequires."),
-  confirm: z.boolean().optional().describe("Omit/false to get a preview ONLY (no code). Set true to emit the GPSHARE1: code after the user confirms the preview."),
+  goals: z.array(goalShape).optional().describe("Single-section form: the goals to encode (GPSHARE1 wire — every plugin build imports it). Relations are wired by id via requires/orRequires."),
+  sections: z
+    .array(sectionShape)
+    .optional()
+    .describe(
+      "Multi-section form: several sections in ONE code (GPSHARE2 wire — recipients need a recent plugin build). " +
+        "Each entry imports as its own section; an entry with targetDefault:true lands in the recipient's Default plan with reuse-dedup. " +
+        "Use this OR goals, not both.",
+    ),
+  confirm: z.boolean().optional().describe("Omit/false to get a preview ONLY (no code). Set true to emit the import code after the user confirms the preview."),
 };
 
 const text = (s: string) => ({ content: [{ type: "text" as const, text: s }] });
@@ -62,7 +86,9 @@ export function createServer(): McpServer {
     {
       title: "Craft a Goal Planner import string",
       description:
-        "Build a RuneLite Goal Planner GPSHARE1: import code from a structured goal spec. " +
+        "Build a RuneLite Goal Planner import code from a structured goal spec — either ONE section " +
+        "(goals[], GPSHARE1 wire, imports on every plugin build) or MULTIPLE sections at once " +
+        "(sections[], GPSHARE2 wire, including default-plan targeting with reuse-dedup). " +
         "By DEFAULT (no confirm) it returns a rendering of the goal list as it will appear — section " +
         "header, each goal with its type/target, prerequisites nested as a guide tree, and per-goal " +
         "tracking badges — plus warnings, and NO code. Show that to the user so they can adjust the " +
@@ -73,9 +99,18 @@ export function createServer(): McpServer {
     },
     async (args) => {
       const spec = args as unknown as ShareSpec & { confirm?: boolean };
+      if (spec.sections?.length && spec.goals?.length) {
+        return text("Cannot build: pass either goals (single section) or sections (multi-section), not both.");
+      }
+      if (!spec.sections?.length && !spec.goals?.length) {
+        return text("Cannot build: no goals. Add at least one goal (goals[] or sections[]), then try again.");
+      }
       const result = buildBundle(spec);
 
-      if (result.bundle.goals.length === 0) {
+      const totalGoals = result.bundle.sections?.length
+        ? result.bundle.sections.reduce((n, sec) => n + sec.goals.length, 0)
+        : result.bundle.goals.length;
+      if (totalGoals === 0) {
         return text("Cannot build: no goals. Add at least one goal, then try again.\n\n" + result.preview);
       }
 
@@ -102,9 +137,9 @@ export function createServer(): McpServer {
     {
       title: "Decode a Goal Planner import string",
       description:
-        "Decode a GPSHARE1: code back into a readable breakdown (section, goals, identifiers, prerequisite tree) " +
+        "Decode a GPSHARE1:/GPSHARE2: code back into a readable breakdown (sections, goals, identifiers, prerequisite tree) " +
         "for verification. Tolerates surrounding text — paste the whole message containing the code.",
-      inputSchema: { code: z.string().describe("A GPSHARE1: import code (may be embedded in other text).") },
+      inputSchema: { code: z.string().describe("A GPSHARE1: or GPSHARE2: import code (may be embedded in other text).") },
     },
     async ({ code }) => {
       try {

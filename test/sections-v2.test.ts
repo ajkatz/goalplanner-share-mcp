@@ -1,0 +1,125 @@
+import { describe, expect, it } from "vitest";
+
+import { buildBundle } from "../src/build.js";
+import { encode, decode } from "../src/codec.js";
+import { effectiveSections, needsV2 } from "../src/bundle.js";
+import { describeBundle } from "../src/describe.js";
+
+const SLAYER = [{ type: "ITEM_GRIND", name: "Imbued heart" }];
+const RAIDS = [
+  { id: "rng", type: "skill", skill: "Ranged", level: 90 },
+  { id: "zuk", type: "BOSS", name: "TzKal-Zuk", requires: ["rng"] },
+];
+
+describe("multi-section crafting (GPSHARE2)", () => {
+  it("a sections[] spec builds one bundle with one entry per section", () => {
+    const { bundle, resolved, warnings } = buildBundle({
+      sharedBy: "Andrew",
+      sections: [
+        { name: "Slayer", goals: SLAYER },
+        { name: "Raids", goals: RAIDS },
+      ],
+    });
+    expect(bundle.sections).toHaveLength(2);
+    expect(bundle.sections![0].name).toBe("Slayer");
+    expect(bundle.sections![1].goals).toHaveLength(2);
+    expect(resolved).toHaveLength(3);
+    expect(resolved.every((r) => r.tracked)).toBe(true);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("relation refs are scoped per section", () => {
+    const { bundle } = buildBundle({
+      sections: [
+        { name: "A", goals: [{ type: "skill", skill: "Attack", level: 99 }] },
+        { name: "B", goals: RAIDS },
+      ],
+    });
+    const zuk = bundle.sections![1].goals.find((g) => g.type === "BOSS")!;
+    const ranged = bundle.sections![1].goals.find((g) => g.type === "SKILL")!;
+    expect(zuk.requires).toEqual([ranged.ref]);
+  });
+
+  it("multi-section bundles encode as GPSHARE2 and round-trip", () => {
+    const { bundle } = buildBundle({
+      sections: [
+        { name: "Slayer", goals: SLAYER },
+        { name: "Raids", goals: RAIDS },
+      ],
+    });
+    const code = encode(bundle);
+    expect(code.startsWith("GPSHARE2:")).toBe(true);
+    const decoded = decode(code);
+    expect(decoded.v).toBe(2);
+    expect(decoded.sections).toHaveLength(2);
+    expect(decoded.sections![1].goals).toHaveLength(2);
+  });
+
+  it("a single default-target section needs the v2 wire", () => {
+    const { bundle } = buildBundle({
+      sections: [{ targetDefault: true, goals: SLAYER }],
+    });
+    expect(needsV2(bundle)).toBe(true);
+    const code = encode(bundle);
+    expect(code.startsWith("GPSHARE2:")).toBe(true);
+    expect(decode(code).sections![0].targetDefault).toBe(true);
+  });
+
+  it("a single plain section crafted via sections[] still emits the v1 wire", () => {
+    const { bundle } = buildBundle({
+      sections: [{ name: "Slayer", goals: SLAYER }],
+    });
+    const code = encode(bundle);
+    expect(code.startsWith("GPSHARE1:")).toBe(true);
+    const decoded = decode(code);
+    expect(decoded.kind).toBe("SECTION");
+    expect(decoded.sectionName).toBe("Slayer");
+    expect(effectiveSections(decoded)[0].goals).toHaveLength(1);
+  });
+
+  it("legacy single-section specs are untouched (v1 wire, regression)", () => {
+    const { bundle } = buildBundle({ mode: "section", sectionName: "Inferno", goals: RAIDS });
+    expect(encode(bundle).startsWith("GPSHARE1:")).toBe(true);
+  });
+
+  it("the preview groups goals per section and flags default-targeting", () => {
+    const { preview } = buildBundle({
+      sections: [
+        { name: "Raids", goals: RAIDS },
+        { targetDefault: true, goals: SLAYER },
+      ],
+    });
+    expect(preview).toContain("2 sections");
+    expect(preview).toContain('Section 1/2: "Raids"');
+    expect(preview).toContain("Default plan");
+    expect(preview).toContain("reused");
+  });
+
+  it("warnings are prefixed with their section label", () => {
+    const { warnings } = buildBundle({
+      sections: [{ name: "Misc", goals: [{ type: "ITEM_GRIND", name: "definitely not an item xyz" }] }],
+    });
+    expect(warnings.some((w) => w.startsWith("[Misc]"))).toBe(true);
+  });
+
+  it("decode_import_string's breakdown renders v2 sections", () => {
+    const { bundle } = buildBundle({
+      sections: [
+        { name: "Slayer", goals: SLAYER },
+        { targetDefault: true, goals: RAIDS },
+      ],
+    });
+    const text = describeBundle(decode(encode(bundle)));
+    expect(text).toContain("Schema version: v2");
+    expect(text).toContain("Sections: 2");
+    expect(text).toContain('"Slayer"');
+    expect(text).toContain("DEFAULT plan");
+  });
+
+  it("group fan-out works inside a section (all elite diaries → 12)", () => {
+    const { bundle } = buildBundle({
+      sections: [{ name: "Diaries", goals: [{ type: "DIARY", name: "all elite diaries" }] }],
+    });
+    expect(bundle.sections![0].goals).toHaveLength(12);
+  });
+});

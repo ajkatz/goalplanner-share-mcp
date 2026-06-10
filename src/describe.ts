@@ -3,7 +3,7 @@
  * inverse view used by the decode tool to verify what a GPSHARE1: code actually
  * contains (relations are drawn from the bundle-local `ref` edges).
  */
-import { type ShareBundle, type GoalShareDto } from "./bundle.js";
+import { type ShareBundle, type GoalShareDto, effectiveSections } from "./bundle.js";
 
 /** A goal "tracks" if it carries the identifier its type needs to match game state. */
 const trackable = (g: GoalShareDto): boolean => {
@@ -28,18 +28,39 @@ const trackable = (g: GoalShareDto): boolean => {
 };
 
 export function describeBundle(bundle: ShareBundle): string {
+  const sections = effectiveSections(bundle);
   const lines: string[] = [];
   lines.push(`Schema version: v${bundle.v}`);
+  if (bundle.v >= 2) {
+    const total = sections.reduce((n, s) => n + s.goals.length, 0);
+    lines.push(`Sections: ${sections.length} (${total} goals total)`);
+    if (bundle.sharedBy) lines.push(`Shared by: ${bundle.sharedBy}`);
+    sections.forEach((sec, i) => {
+      lines.push("");
+      const label = sec.targetDefault
+        ? "→ DEFAULT plan (existing equivalents reused on import)"
+        : `"${sec.name ?? "Shared goals"}"`;
+      lines.push(`── Section ${i + 1}/${sections.length}: ${label} — ${sec.goals.length} goal(s) ──`);
+      if (sec.colorRgb >= 0) lines.push(`   colour: #${sec.colorRgb.toString(16).padStart(6, "0")}`);
+      lines.push(describeGoalList(sec.goals));
+    });
+    return lines.join("\n");
+  }
   lines.push(`Kind: ${bundle.kind}`);
   if (bundle.kind === "SECTION") lines.push(`Section name: "${bundle.sectionName ?? "(none)"}"`);
   if (bundle.sharedBy) lines.push(`Shared by: ${bundle.sharedBy}`);
   if (bundle.sectionColorRgb >= 0) lines.push(`Section colour: #${bundle.sectionColorRgb.toString(16).padStart(6, "0")}`);
   lines.push(`Goals: ${bundle.goals.length}`);
   lines.push("");
+  lines.push(describeGoalList(bundle.goals));
+  return lines.join("\n");
+}
 
-  const byRef = new Map(bundle.goals.map((g) => [g.ref, g]));
-  const childRefs = new Set(bundle.goals.flatMap((g) => [...(g.requires ?? []), ...(g.orRequires ?? [])]));
-  const roots = bundle.goals.filter((g) => !childRefs.has(g.ref));
+function describeGoalList(goals: GoalShareDto[]): string {
+  const lines: string[] = [];
+  const byRef = new Map(goals.map((g) => [g.ref, g]));
+  const childRefs = new Set(goals.flatMap((g) => [...(g.requires ?? []), ...(g.orRequires ?? [])]));
+  const roots = goals.filter((g) => !childRefs.has(g.ref));
   const shown = new Set<number>();
 
   const idPart = (g: GoalShareDto): string => {
@@ -75,6 +96,6 @@ export function describeBundle(bundle: ShareBundle): string {
   };
 
   for (const g of roots) render(g, 0);
-  for (const g of bundle.goals) if (!shown.has(g.ref)) render(g, 0);
+  for (const g of goals) if (!shown.has(g.ref)) render(g, 0);
   return lines.join("\n");
 }
