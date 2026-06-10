@@ -75,8 +75,8 @@ describe("buildBundle — Phase 2 types", () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it("falls back to CUSTOM when a Phase-2 type has no identifier", () => {
-    const { bundle, warnings } = buildBundle(spec([{ type: "account", name: "Max total level" }]));
+  it("falls back to CUSTOM when an untyped kind has no identifier", () => {
+    const { bundle, warnings } = buildBundle(spec([{ type: "collection_log", name: "All pets" }]));
     expect(bundle.goals[0]!.type).toBe("CUSTOM");
     expect(warnings.join(" ")).toMatch(/CUSTOM/);
   });

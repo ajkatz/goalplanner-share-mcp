@@ -34,6 +34,12 @@ import {
   DIARY_AREAS,
 } from "./refdata/diaries.js";
 import { resolveQuest, isKnownQuestEnum, searchQuests } from "./refdata/quests.js";
+import {
+  resolveAccountMetric,
+  isKnownAccountMetric,
+  searchAccountMetrics,
+  type AccountMetricRef,
+} from "./refdata/accounts.js";
 
 /** GoalType → the label the plugin shows on a goal card. */
 const TYPE_LABEL: Record<string, string> = {
@@ -51,7 +57,7 @@ const TYPE_LABEL: Record<string, string> = {
 const withCommas = (n: number): string => n.toLocaleString("en-US");
 
 /** Kinds the typed core fully validates today (everything else → CUSTOM fallback). */
-export const TYPED_CORE: GoalType[] = ["SKILL", "BOSS", "ITEM_GRIND", "DIARY", "QUEST", "CUSTOM"];
+export const TYPED_CORE: GoalType[] = ["SKILL", "BOSS", "ITEM_GRIND", "DIARY", "QUEST", "ACCOUNT", "CUSTOM"];
 
 export interface GoalSpec {
   /** Caller label used to wire requires/orRequires; defaults to the goal's index. */
@@ -526,6 +532,80 @@ function resolveGoal(
         didYouMean,
     );
     return custom(g, ref, id, "quest not recognized");
+  }
+
+  // ACCOUNT (typed core) ----------------------------------------------------
+  // Tracks via AccountMetric.valueOf(accountMetric) on the recipient — the wire
+  // value must be the plugin's enum CONSTANT (e.g. QUEST_POINTS). Each metric
+  // carries the plugin's sensible-target range; out-of-range targets warn but
+  // still emit (the tracker clamps display, not correctness).
+  if (rawType === "account" || asGoalType(g.type) === "ACCOUNT") {
+    const mkAccount = (metricName: string, target: number, name: string, tracked: boolean, note?: string) => {
+      const dto: GoalShareDto = { ref, type: "ACCOUNT", name, accountMetric: metricName, targetValue: target };
+      if (g.description?.trim()) dto.description = g.description.trim();
+      if (g.wikiUrl?.trim()) dto.wikiUrl = g.wikiUrl.trim();
+      if (g.optional) dto.optional = true;
+      const res: ResolvedGoal = {
+        ref,
+        id,
+        type: "ACCOUNT",
+        name,
+        detail: `target ${withCommas(target)}`,
+        tracked,
+        requires: [],
+        orRequires: [],
+      };
+      if (note) res.note = note;
+      return { dto, res };
+    };
+
+    const targetFor = (m: AccountMetricRef): number => {
+      if (g.targetValue !== undefined && g.targetValue > 0) {
+        if (g.targetValue < m.minTarget || g.targetValue > m.maxTarget) {
+          warnings.push(
+            `goal "${id}": target ${withCommas(g.targetValue)} is outside the plugin's sensible range for ` +
+              `${m.displayName} (${withCommas(m.minTarget)}–${withCommas(m.maxTarget)}) — emitted as-is.`,
+          );
+        }
+        return g.targetValue;
+      }
+      warnings.push(
+        `goal "${id}": no targetValue given for ${m.displayName} — assumed the maximum, ` +
+          `${withCommas(m.maxTarget)}. Pass targetValue to pick a different milestone.`,
+      );
+      return m.maxTarget;
+    };
+    const leaguesNote = (m: AccountMetricRef): string | undefined =>
+      m.leagues ? "Leagues metric — tracks on seasonal worlds only" : undefined;
+
+    if (g.accountMetric?.trim()) {
+      const known = isKnownAccountMetric(g.accountMetric);
+      if (known) {
+        return mkAccount(known.enumName, targetFor(known), g.name?.trim() || known.displayName, true, leaguesNote(known));
+      }
+      warnings.push(
+        `goal "${id}": accountMetric "${g.accountMetric}" is not a plugin AccountMetric constant — emitted ` +
+          `UNVERIFIED (the recipient's AccountTracker only auto-tracks exact constants like QUEST_POINTS).`,
+      );
+      const target = g.targetValue && g.targetValue > 0 ? g.targetValue : 1;
+      return mkAccount(g.accountMetric.trim(), target, g.name?.trim() || g.accountMetric.trim(), false, "unverified identifier");
+    }
+
+    const match = resolveAccountMetric(g.name);
+    if (match) {
+      // Resolving BY NAME: the canonical display wins (so "qp" → "Quest Points").
+      // A deliberate custom label is supported via the explicit-accountMetric path above.
+      return mkAccount(match.enumName, targetFor(match), match.displayName, true, leaguesNote(match));
+    }
+    const suggestions = searchAccountMetrics(g.name, 5);
+    const didYouMean = suggestions.length
+      ? ` Closest matches: ${suggestions.map((s) => `${s.displayName} (${s.enumName})`).join(", ")}.`
+      : " See list_supported_goals for the available metrics.";
+    warnings.push(
+      `goal "${id}": account metric "${g.name ?? ""}" not recognized — emitted as CUSTOM (won't auto-track).` +
+        didYouMean,
+    );
+    return custom(g, ref, id, "account metric not recognized");
   }
 
   // Other GoalTypes: Phase 1 has no validation dataset. Pass through if the

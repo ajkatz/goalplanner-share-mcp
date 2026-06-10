@@ -19,7 +19,9 @@
     "gen:bosses": "node scripts/gen-bosses.mjs",
     "gen:items": "node scripts/gen-items.mjs",
     "gen:diaries": "node scripts/gen-diaries.mjs",
-    "gen:loadouts": "node scripts/gen-loadouts.mjs"
+    "gen:loadouts": "node scripts/gen-loadouts.mjs",
+    "gen:quests": "node scripts/gen-quests.mjs",
+    "gen:accounts": "node scripts/gen-accounts.mjs"
   },
   "engines": {
     "node": ">=18"

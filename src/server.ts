@@ -14,6 +14,7 @@ import { BOSSES } from "./refdata/bosses.js";
 import { ITEM_COUNT } from "./refdata/items.js";
 import { DIARY_COUNT } from "./refdata/diaries.js";
 import { QUEST_COUNT } from "./refdata/quests.js";
+import { ACCOUNT_METRIC_COUNT } from "./refdata/accounts.js";
 
 const goalShape = z.object({
   id: z.string().optional().describe("Stable label for this goal, used by other goals' requires/orRequires. Defaults to the index."),
@@ -154,8 +155,14 @@ export function createServer(): McpServer {
         "  carries the RuneLite Quest ENUM constant (e.g. DRAGON_SLAYER_II) — pass questName to pin",
         "  one explicitly; an unknown constant emits UNVERIFIED, an unresolvable name → CUSTOM.",
         "",
+        `ACCOUNT resolves ${ACCOUNT_METRIC_COUNT} account-wide metrics (display names or shorthand like "qp",`,
+        '  "kudos", "ca points"): Quest Points, Combat/Total Level, CA/Slayer Points, Museum Kudos,',
+        "  Att+Str, Misc. Approval, ToG PB, Chompy Kills, Colosseum Glory, DoM Depth, League Points/",
+        "  Tasks (seasonal worlds only). Wire carries the plugin AccountMetric ENUM constant; missing",
+        "  targetValue assumes the metric's max; out-of-range targets warn.",
+        "",
         "Phase 2 (not yet validated — pass an explicit identifier to emit unverified, else CUSTOM fallback):",
-        "  - ACCOUNT (accountMetric), COMBAT_ACHIEVEMENT (caTaskId)",
+        "  - COMBAT_ACHIEVEMENT (caTaskId)",
         "",
         "CUSTOM: always available; never auto-tracks (manual check-off).",
       ];
