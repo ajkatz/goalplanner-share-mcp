@@ -27,7 +27,8 @@ describe("buildBundle — typed core", () => {
   });
 
   it("falls back to CUSTOM with a warning for an unknown skill", () => {
-    const { bundle, resolved, warnings } = buildBundle(spec([{ type: "skill", skill: "Sailing", level: 50 }]));
+    // Summoning is an RS3 skill, never in OSRS — a safe "unknown" example.
+    const { bundle, resolved, warnings } = buildBundle(spec([{ type: "skill", skill: "Summoning", level: 50 }]));
     expect(bundle.goals[0]!.type).toBe("CUSTOM");
     expect(resolved[0]!.tracked).toBe(false);
     expect(warnings.join(" ")).toMatch(/unknown skill/i);

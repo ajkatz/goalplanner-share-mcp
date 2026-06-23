@@ -1,5 +1,5 @@
 /**
- * Skill reference data — the 23 RuneLite `net.runelite.api.Skill` enum names
+ * Skill reference data — the 24 RuneLite `net.runelite.api.Skill` enum names
  * (OVERALL is excluded; it isn't a valid skill-goal target) plus the canonical
  * OSRS XP-for-level table. A SKILL goal tracks by `skillName` (enum name) +
  * `targetValue` (XP), so both must be exact for the recipient's plugin to match.
@@ -30,6 +30,7 @@ export const SKILLS: Record<string, string> = {
   RUNECRAFT: "Runecraft",
   HUNTER: "Hunter",
   CONSTRUCTION: "Construction",
+  SAILING: "Sailing",
 };
 
 /** Highest normal level; virtual levels run to 126 but goals rarely need them. */
