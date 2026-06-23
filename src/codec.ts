@@ -48,6 +48,7 @@ export function encode(bundle: ShareBundle): string {
       goals: [],
       sections: secs,
     };
+    if (bundle.crossEdges && bundle.crossEdges.length > 0) wire.crossEdges = bundle.crossEdges;
     if (bundle.sharedBy) wire.sharedBy = bundle.sharedBy;
     prefix = PREFIX_V2;
   } else {
@@ -127,6 +128,24 @@ export function decode(text: string): ShareBundle {
     for (const s of bundle.sections) {
       if (!s || !Array.isArray(s.goals)) {
         throw new ShareFormatError("invalid share payload");
+      }
+    }
+    if (bundle.crossEdges != null) {
+      if (!Array.isArray(bundle.crossEdges)) {
+        throw new ShareFormatError("invalid share payload");
+      }
+      for (const e of bundle.crossEdges) {
+        if (
+          !e ||
+          typeof e !== "object" ||
+          !Number.isInteger(e.fromSection) ||
+          !Number.isInteger(e.fromRef) ||
+          !Number.isInteger(e.toSection) ||
+          !Number.isInteger(e.toRef)
+        ) {
+          throw new ShareFormatError("invalid share payload");
+        }
+        e.or = e.or === true; // Gson default: absent → false
       }
     }
     // The Java encoder omits the legacy fields on the v2 wire — normalize so

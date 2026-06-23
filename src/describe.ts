@@ -3,7 +3,7 @@
  * inverse view used by the decode tool to verify what a GPSHARE1: code actually
  * contains (relations are drawn from the bundle-local `ref` edges).
  */
-import { type ShareBundle, type GoalShareDto, effectiveSections } from "./bundle.js";
+import { type ShareBundle, type GoalShareDto, type SectionShareDto, effectiveSections } from "./bundle.js";
 
 /** A goal "tracks" if it carries the identifier its type needs to match game state. */
 const trackable = (g: GoalShareDto): boolean => {
@@ -44,6 +44,15 @@ export function describeBundle(bundle: ShareBundle): string {
       if (sec.colorRgb >= 0) lines.push(`   colour: #${sec.colorRgb.toString(16).padStart(6, "0")}`);
       lines.push(describeGoalList(sec.goals));
     });
+    if (bundle.crossEdges && bundle.crossEdges.length > 0) {
+      lines.push("");
+      lines.push(`── Cross-section dependencies (${bundle.crossEdges.length}) ──`);
+      for (const e of bundle.crossEdges) {
+        const from = edgeEndpoint(sections, e.fromSection, e.fromRef);
+        const to = edgeEndpoint(sections, e.toSection, e.toRef);
+        lines.push(`  • ${from} ${e.or ? "needs any of" : "requires"} ${to}`);
+      }
+    }
     return lines.join("\n");
   }
   lines.push(`Kind: ${bundle.kind}`);
@@ -54,6 +63,16 @@ export function describeBundle(bundle: ShareBundle): string {
   lines.push("");
   lines.push(describeGoalList(bundle.goals));
   return lines.join("\n");
+}
+
+/** `"Goal name" (section 2 "Raids")` — or a placeholder for malformed indices
+ *  (the plugin importer drops such edges silently; the breakdown should show them). */
+function edgeEndpoint(sections: SectionShareDto[], secIdx: number, ref: number): string {
+  const sec = sections[secIdx];
+  const goal = sec?.goals.find((g) => g.ref === ref);
+  const secLabel = sec ? `section ${secIdx + 1} "${sec.name ?? (sec.targetDefault ? "Default plan" : "Shared goals")}"` : `section ${secIdx + 1} (missing)`;
+  if (!goal) return `(unresolved ref ${ref} in ${secLabel} — edge will be dropped on import)`;
+  return `"${goal.name ?? "(unnamed)"}" (${secLabel})`;
 }
 
 function describeGoalList(goals: GoalShareDto[]): string {
@@ -80,6 +99,8 @@ function describeGoalList(goals: GoalShareDto[]): string {
     const indent = "  ".repeat(depth);
     const flag = trackable(g) ? "✓ tracks" : "CUSTOM/manual";
     lines.push(`${indent}• [${g.type}] ${g.name ?? "(unnamed)"}${idPart(g)} — ${flag}`);
+    if (g.description) lines.push(`${indent}    desc: ${g.description}`);
+    if (g.tooltip) lines.push(`${indent}    tooltip: ${g.tooltip}`);
     shown.add(g.ref);
     for (const r of g.requires ?? []) {
       const c = byRef.get(r);

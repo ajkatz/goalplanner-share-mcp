@@ -19,6 +19,19 @@ codes this tool produces, and this tool decodes codes the plugin produces).
   existing equivalent goals (the in-game add dedup), so re-importing never duplicates.
   Single-section codes still emit the `GPSHARE1:` wire, which every plugin build imports;
   multi-section/default-target codes need a recent plugin build.
+- **Cross-section dependencies**: in the `sections[]` form, a goal may `requires`/
+  `orRequires` a goal in a *different* section by its explicit `id`. The edge rides the
+  bundle-level `crossEdges` wire field (mirroring the plugin's `CrossEdgeDto`) and is
+  rewired on import. Section-local ids always win; an id found in several other sections
+  is ambiguous and dropped with a warning; cycles are checked across the whole bundle.
+  The preview marks the link on the dependent goal:
+
+  ```
+  ═══ Section 2/2: "Inferno prep" ═══
+  Ranged - Level 90   [Skill · Level 90 (5,346,332 xp)]  ✓ auto-tracks
+    ↪ needs "Imbued heart" — from section 1 "Slayer"
+    TzKal-Zuk   [Boss · TzKal-Zuk · 1 KC]  ✓ auto-tracks   ◀ final goal
+  ```
 - **Simple goals or complex trees**: goals are wired into prerequisite trees (AND via
   `requires`, OR via `orRequires`) by stable `id`. Diamonds and OR-groups are supported.
 - **Hybrid typing**: recognized kinds become **typed, auto-tracking** goals; anything else
@@ -50,7 +63,7 @@ codes this tool produces, and this tool decodes codes the plugin produces).
 
 | Status | Types | Notes |
 |---|---|---|
-| ✅ Typed core (auto-tracks) | `SKILL`, `BOSS`, `ITEM_GRIND`, `DIARY`, `QUEST`, `ACCOUNT`, `COMBAT_ACHIEVEMENT`, `CUSTOM` | SKILL by level or XP (all 23 skills); BOSS by name (all 89 tracked bosses + aliases), KC target defaults to 1; ITEM_GRIND by item name against the full OSRS item table (or explicit `itemId`); DIARY by "<Area> <Tier>" name across 12 areas × 4 tiers (or explicit known `varbitId`); QUEST by display name/abbreviation (209 quests+miniquests, wire carries the RuneLite `Quest` enum constant); ACCOUNT by metric name/shorthand (14 plugin `AccountMetric`s, target validated against the plugin's range, missing target = max); COMBAT_ACHIEVEMENT by exact task name (637 tasks, wire carries `caTaskId` 0–639, tier sprite + description match in-game-created goals) |
+| ✅ Typed core (auto-tracks) | `SKILL`, `BOSS`, `ITEM_GRIND`, `DIARY`, `QUEST`, `ACCOUNT`, `COMBAT_ACHIEVEMENT`, `CUSTOM` | SKILL by level or XP (all 23 skills); BOSS by name (all 89 tracked bosses + aliases), KC target defaults to 1; ITEM_GRIND by item name against the full OSRS item table (or explicit `itemId`); DIARY by "<Area> <Tier>" name across 12 areas × 4 tiers (or explicit known `varbitId`); QUEST by display name/abbreviation (209 quests+miniquests, wire carries the RuneLite `Quest` enum constant); ACCOUNT by metric name/shorthand (16 plugin `AccountMetric`s incl. Collection Log Slots and Diary Tiers; phrases like "maintain quest cape" imply metric AND milestone — quest-point max is 335 as of The Red Reef; out-of-range targets warn but emit, matching the plugin's allow-over-max behaviour; missing target = max); COMBAT_ACHIEVEMENT by exact task name (637 tasks, wire carries `caTaskId` 0–639, tier sprite + description match in-game-created goals) |
 | 🧩 Group expansion (one phrase → many goals) | item sets/loadouts, boss & diary groups | `full torva` → 3, `maxed melee setup` → 9; `GWD` → 4 bosses, `Dagannoth Kings` → 3, `all bosses` → 89; `all elite diaries` → 12, `all Ardougne diaries` → 4, `all diaries` → 48 |
 | 🔶 Passthrough (unverified) | unknown `questName` / `accountMetric` / `caTaskId` / `varbitId` / `itemId` identifiers | emitted as supplied with an UNVERIFIED warning; unresolvable names fall back to CUSTOM with did-you-mean suggestions |
 | 🗺️ Roadmap | CA tier groups (`all easy CAs`), quest groups (`all f2p quests`) | |
@@ -109,9 +122,16 @@ the test names each line so a regression reads as English.
 - **`craft_import_string`** — `{ mode?, sectionName?, sectionColorRgb?, sharedBy?, goals[]?, sections[]?, confirm? }`
   (`sections[]` = multi-section/default-target form; each entry is `{ name?, sectionColorRgb?, targetDefault?, goals[] }`).
   Without `confirm`: human-readable preview + warnings, **no code**. With `confirm: true`:
-  the `GPSHARE1:` code.
-- **`decode_import_string`** — `{ code }`. Decodes any `GPSHARE1:` code (even embedded in
-  surrounding text) into a readable breakdown for verification.
+  the paste-ready code (`GPSHARE1:` single-section, `GPSHARE2:` multi-section).
+- **`decode_import_string`** — `{ code }`. Decodes any `GPSHARE1:`/`GPSHARE2:` code (even
+  embedded in surrounding text) into a readable breakdown for verification — sections,
+  identifiers, prerequisite tree, per-goal `desc:`/`tooltip:` echo, and a
+  **Cross-section dependencies** list with resolved goal names:
+
+  ```
+  ── Cross-section dependencies (1) ──
+    • "TzKal-Zuk" (section 2 "Inferno prep") requires "Imbued heart" (section 1 "Slayer")
+  ```
 - **`list_supported_goals`** — what auto-tracks vs. falls back, plus the skill names.
 
 ### Goal spec fields

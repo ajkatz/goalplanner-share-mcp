@@ -53,7 +53,12 @@ const sectionShape = z.object({
       "Import these goals into the recipient's DEFAULT plan instead of a new section. " +
         "Existing equivalent goals are REUSED (same dedup as the in-game Add Goal flow) — re-importing never duplicates.",
     ),
-  goals: z.array(goalShape).describe("Goals for this section. Relation ids are scoped to this section."),
+  goals: z
+    .array(goalShape)
+    .describe(
+      "Goals for this section. Relation ids resolve within this section first; an EXPLICIT id that names a " +
+        "goal in ANOTHER section becomes a cross-section dependency edge (carried on the GPSHARE2 wire).",
+    ),
 });
 
 const craftShape = {
@@ -71,6 +76,7 @@ const craftShape = {
     .describe(
       "Multi-section form: several sections in ONE code (GPSHARE2 wire — recipients need a recent plugin build). " +
         "Each entry imports as its own section; an entry with targetDefault:true lands in the recipient's Default plan with reuse-dedup. " +
+        "Goals may require goals in OTHER sections by their explicit id (emitted as cross-section edges). " +
         "Use this OR goals, not both.",
     ),
   confirm: z.boolean().optional().describe("Omit/false to get a preview ONLY (no code). Set true to emit the import code after the user confirms the preview."),
@@ -94,7 +100,14 @@ export function createServer(): McpServer {
         "tracking badges — plus warnings, and NO code. Show that to the user so they can adjust the " +
         "goals; re-run for an updated preview. Only once they confirm it matches their intent, call " +
         "again with the same goals and confirm:true to receive the paste-ready code. Supports simple " +
-        "goals and complex prerequisite trees (wire via id + requires/orRequires).",
+        "goals and complex prerequisite trees (wire via id + requires/orRequires). " +
+        "CRAFTING CONVENTIONS: (1) Keep sections FLAT — never invent parent/summary CUSTOM goals " +
+        '(e.g. an "X log complete" goal requiring the items) unless the user explicitly asks for that ' +
+        "structure; a list of items is just the item goals. (2) Prefer typed goals over CUSTOM with a " +
+        'narrative name — account-shaped goals ("maintain quest cape", "reach elite combat achievements", ' +
+        '"2100 total level") should be type ACCOUNT with the PHRASE as name: the resolver implies the ' +
+        "metric AND milestone, and the goal displays the canonical metric name. Only pass an explicit " +
+        "accountMetric constant when you need a custom display name — usually you don't.",
       inputSchema: craftShape,
     },
     async (args) => {
@@ -137,8 +150,9 @@ export function createServer(): McpServer {
     {
       title: "Decode a Goal Planner import string",
       description:
-        "Decode a GPSHARE1:/GPSHARE2: code back into a readable breakdown (sections, goals, identifiers, prerequisite tree) " +
-        "for verification. Tolerates surrounding text — paste the whole message containing the code.",
+        "Decode a GPSHARE1:/GPSHARE2: code back into a readable breakdown (sections, goals, identifiers, descriptions/" +
+        "tooltips, prerequisite tree, cross-section dependencies) for verification. Tolerates surrounding text — " +
+        "paste the whole message containing the code.",
       inputSchema: { code: z.string().describe("A GPSHARE1: or GPSHARE2: import code (may be embedded in other text).") },
     },
     async ({ code }) => {
@@ -177,6 +191,9 @@ export function createServer(): McpServer {
         "",
         `ITEM_GRIND resolves item names against ${ITEM_COUNT.toLocaleString("en-US")} OSRS items (e.g. "Magic`,
         '  logs", "Abyssal whip"; nicknames like "tbow", "bp", "shadow"). Quantity target defaults to 1.',
+        '  Chargeable weapons resolve to the CHARGED id ("Trident of the seas" → 11907) — tracking is by',
+        '  exact id, so an uncharged copy does NOT count; name the uncharged form ("Uncharged trident",',
+        '  "Craw\'s bow (u)") to track the tradeable variant instead.',
         '  SETS, LOADOUTS and PHRASES fan out into one goal per piece: "full torva" → 3, "full masori +',
         '  tbow" → 4, "maxed melee setup" → 9 (also maxed ranged/mage). Pass an explicit itemId to skip',
         "  name resolution; an unresolvable name with no id → CUSTOM.",
@@ -192,10 +209,18 @@ export function createServer(): McpServer {
         "  one explicitly; an unknown constant emits UNVERIFIED, an unresolvable name → CUSTOM.",
         "",
         `ACCOUNT resolves ${ACCOUNT_METRIC_COUNT} account-wide metrics (display names or shorthand like "qp",`,
-        '  "kudos", "ca points"): Quest Points, Combat/Total Level, CA/Slayer Points, Museum Kudos,',
-        "  Att+Str, Misc. Approval, ToG PB, Chompy Kills, Colosseum Glory, DoM Depth, League Points/",
-        "  Tasks (seasonal worlds only). Wire carries the plugin AccountMetric ENUM constant; missing",
-        "  targetValue assumes the metric's max; out-of-range targets warn.",
+        '  "kudos", "ca points", "clog slots", "diaries"): Quest Points, Combat/Total Level, CA/Slayer',
+        "  Points, Museum Kudos, Att+Str, Misc. Approval, ToG PB, Chompy Kills, Colosseum Glory, DoM",
+        "  Depth, Collection Log Slots (unique slots obtained), Diary Tiers (completed tiers, 0–48),",
+        "  League Points/Tasks (seasonal worlds only). Wire carries the plugin AccountMetric ENUM",
+        "  constant; missing targetValue assumes the metric's max; out-of-range targets warn.",
+        '  PHRASES resolve too, with implied milestones — pass the goal text as name: "maintain quest',
+        '  cape" → QUEST_POINTS @ max (335), "reach elite combat achievements" / "elite cas" → CA_POINTS',
+        "  @ the tier threshold (Easy 41 / Medium 161 / Hard 416 / Elite 1064 / Master 1904 / GM 2630),",
+        '  "maxing" → TOTAL_LEVEL @ 2376, "achievement diary cape" → DIARY_TIERS_COMPLETED @ 48.',
+        '  Name-resolved goals display the CANONICAL metric name ("qp" →',
+        '  "Quest Points") — that is the preferred shape; only an explicit accountMetric constant keeps',
+        "  a custom display name.",
         "",
         `COMBAT_ACHIEVEMENT resolves ${CA_COUNT} CA task names (exact, e.g. "Noxious Foe") — the same`,
         "  wiki table the plugin loads, so name↔caTaskId pairs match the recipient. Pass caTaskId",

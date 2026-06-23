@@ -14,6 +14,7 @@ import {
   GOAL_TYPES,
   SCHEMA_VERSION,
   type SectionShareDto,
+  type CrossEdgeDto,
   SCHEMA_VERSION_V1,
 } from "./bundle.js";
 import { resolveSkill, xpForLevel, levelForXp, SKILLS, MAX_LEVEL } from "./refdata/skills.js";
@@ -135,6 +136,9 @@ export interface ResolvedGoal {
   note?: string;
   requires: string[]; // resolved ids (AND)
   orRequires: string[]; // resolved ids (OR)
+  /** Prerequisites living in a DIFFERENT section (multi-section builds only) —
+   *  carried on the bundle's crossEdges, shown as marked links in the preview. */
+  crossRequires?: { id: string; name: string; sectionIndex: number; sectionLabel: string; or: boolean }[];
 }
 
 export interface BuildResult {
@@ -316,22 +320,99 @@ export function buildBundle(spec: ShareSpec): BuildResult {
  * (group fan-out, typed resolution, section-scoped relation refs), then the
  * results are assembled into a v2 bundle. The codec picks the GPSHARE2 wire
  * automatically (or GPSHARE1 if this somehow reduces to one plain section).
+ *
+ * Cross-section edges: a requires/orRequires id that names a goal in a
+ * DIFFERENT section (explicit ids only — index-default ids stay section-local)
+ * is lifted off the goal and carried as a bundle-level crossEdges entry,
+ * mirroring the plugin's ShareMapper.crossEdges. Section-local ids always win;
+ * an id found in several other sections is ambiguous and dropped with a warning.
  */
 function buildMultiSectionBundle(spec: ShareSpec): BuildResult {
-  const sections: SectionShareDto[] = [];
-  const resolvedAll: ResolvedGoal[] = [];
+  const secSpecs = spec.sections ?? [];
   const warnings: string[] = [];
-  const previews: string[] = [];
+  const labels = secSpecs.map((sec, i) =>
+    sec.targetDefault ? "Default (your main plan)" : sec.name?.trim() || `Section ${i + 1}`,
+  );
 
-  (spec.sections ?? []).forEach((sec, i) => {
-    const label = sec.targetDefault ? "Default (your main plan)" : sec.name?.trim() || `Section ${i + 1}`;
+  // Pre-expand group goals so ids and refs (list positions) are final before
+  // cross-section wiring; buildBundle's own expansion pass is a no-op on the
+  // already-expanded result.
+  const expanded: GoalSpec[][] = secSpecs.map((sec, i) => {
+    const w: string[] = [];
+    const goals = expandGroupGoals(sec.goals ?? [], w);
+    for (const x of w) warnings.push(`[${labels[i]}] ${x}`);
+    return goals;
+  });
+
+  // EXPLICIT goal ids → every (section, ref) carrying them, bundle-wide.
+  const at = new Map<string, { sec: number; ref: number }[]>();
+  expanded.forEach((goals, s) => {
+    goals.forEach((g, r) => {
+      const id = g.id?.trim();
+      if (!id) return;
+      const bucket = at.get(id);
+      if (bucket) bucket.push({ sec: s, ref: r });
+      else at.set(id, [{ sec: s, ref: r }]);
+    });
+  });
+
+  // Partition each goal's relation ids: section-local stay on the goal, ids
+  // matching exactly one OTHER section become pending cross edges, ambiguous
+  // ones drop here, and ids unknown anywhere stay put so the section build
+  // raises its usual unknown-id warning.
+  interface PendingEdge {
+    fromSec: number;
+    fromRef: number;
+    toSec: number;
+    toRef: number;
+    or: boolean;
+    fromId: string;
+  }
+  const pending: PendingEdge[] = [];
+  const sanitized: GoalSpec[][] = expanded.map((goals, s) => {
+    const localIds = new Set(goals.map((g, r) => (g.id ?? String(r)).trim() || String(r)));
+    return goals.map((g, r) => {
+      const fromId = (g.id ?? String(r)).trim() || String(r);
+      const split = (refIds: string[] | undefined, or: boolean): string[] | undefined => {
+        if (!refIds) return undefined;
+        const kept: string[] = [];
+        for (const targetId of refIds) {
+          if (localIds.has(targetId)) {
+            kept.push(targetId);
+            continue;
+          }
+          const hits = (at.get(targetId) ?? []).filter((h) => h.sec !== s);
+          if (hits.length === 1) {
+            pending.push({ fromSec: s, fromRef: r, toSec: hits[0]!.sec, toRef: hits[0]!.ref, or, fromId });
+            continue;
+          }
+          if (hits.length > 1) {
+            warnings.push(
+              `[${labels[s]}] goal "${fromId}" ${or ? "OR-requires" : "requires"} "${targetId}", which exists in ` +
+                `${hits.length} other sections — ambiguous, edge dropped (make the id unique).`,
+            );
+            continue;
+          }
+          kept.push(targetId);
+        }
+        return kept;
+      };
+      return { ...g, requires: split(g.requires, false), orRequires: split(g.orRequires, true) };
+    });
+  });
+
+  // Per-section builds (group fan-out already applied, relations section-local).
+  const sections: SectionShareDto[] = [];
+  const subs: BuildResult[] = [];
+  sanitized.forEach((goals, i) => {
+    const sec = secSpecs[i]!;
     const sub = buildBundle({
       mode: "section",
       sectionName: sec.targetDefault ? "Default" : sec.name,
       sectionColorRgb: sec.sectionColorRgb,
-      goals: sec.goals,
+      goals,
     });
-    for (const w of sub.warnings) warnings.push(`[${label}] ${w}`);
+    for (const w of sub.warnings) warnings.push(`[${labels[i]}] ${w}`);
 
     const dto: SectionShareDto = {
       colorRgb: sec.sectionColorRgb ?? -1,
@@ -340,18 +421,83 @@ function buildMultiSectionBundle(spec: ShareSpec): BuildResult {
     if (!sec.targetDefault && sec.name?.trim()) dto.name = sec.name.trim();
     if (sec.targetDefault) dto.targetDefault = true;
     sections.push(dto);
-    resolvedAll.push(...sub.resolved);
+    subs.push(sub);
+  });
 
+  // Cross edges, cycle-checked against the whole bundle's dependency graph
+  // (section-local edges included — a cycle through two sections is still a cycle).
+  const node = (s: number, r: number) => `${s}:${r}`;
+  const adj = new Map<string, string[]>();
+  subs.forEach((sub, s) => {
+    const refOf = new Map(sub.resolved.map((res) => [res.id, res.ref]));
+    for (const res of sub.resolved) {
+      for (const id of [...res.requires, ...res.orRequires]) {
+        const from = node(s, res.ref);
+        const list = adj.get(from);
+        const to = node(s, refOf.get(id)!);
+        if (list) list.push(to);
+        else adj.set(from, [to]);
+      }
+    }
+  });
+  const canReach = (start: string, target: string): boolean => {
+    const seen = new Set<string>();
+    const stack = [start];
+    while (stack.length) {
+      const n = stack.pop()!;
+      if (n === target) return true;
+      if (seen.has(n)) continue;
+      seen.add(n);
+      for (const m of adj.get(n) ?? []) stack.push(m);
+    }
+    return false;
+  };
+
+  const crossEdges: CrossEdgeDto[] = [];
+  for (const p of pending) {
+    const from = node(p.fromSec, p.fromRef);
+    const to = node(p.toSec, p.toRef);
+    const toRes = subs[p.toSec]!.resolved[p.toRef]!;
+    if (canReach(to, from)) {
+      warnings.push(
+        `[${labels[p.fromSec]}] goal "${p.fromId}" ${p.or ? "OR-requires" : "requires"} "${toRes.id}" ` +
+          `(in "${labels[p.toSec]}") would create a dependency cycle — edge dropped.`,
+      );
+      continue;
+    }
+    const list = adj.get(from);
+    if (list) list.push(to);
+    else adj.set(from, [to]);
+    crossEdges.push({ fromSection: p.fromSec, fromRef: p.fromRef, toSection: p.toSec, toRef: p.toRef, or: p.or });
+    const fromRes = subs[p.fromSec]!.resolved[p.fromRef]!;
+    (fromRes.crossRequires ??= []).push({
+      id: toRes.id,
+      name: toRes.name,
+      sectionIndex: p.toSec,
+      sectionLabel: labels[p.toSec]!,
+      or: p.or,
+    });
+  }
+
+  // Per-section previews — rendered AFTER cross-edge attachment so the guide
+  // tree shows the cross-section links on their dependent goals.
+  const resolvedAll: ResolvedGoal[] = [];
+  const previews: string[] = [];
+  subs.forEach((sub, i) => {
+    const sec = secSpecs[i]!;
+    resolvedAll.push(...sub.resolved);
     const header = sec.targetDefault
-      ? `═══ ${label} — goals land in YOUR Default plan; ones you already track are reused ═══`
-      : `═══ Section ${i + 1}/${spec.sections!.length}: "${label}" ═══`;
-    // Drop the sub-preview's own banner + warning block; the combined preview
-    // gets one banner and one warning list.
-    const body = sub.preview
+      ? `═══ ${labels[i]} — goals land in YOUR Default plan; ones you already track are reused ═══`
+      : `═══ Section ${i + 1}/${secSpecs.length}: "${labels[i]}" ═══`;
+    // Render without banner/warnings; the combined preview gets one of each.
+    const body = renderPreview(
+      { mode: "section", sectionName: sec.targetDefault ? "Default" : sec.name, goals: [] },
+      sub.resolved,
+      [],
+    )
       .split("\n")
       .filter((l) => !l.startsWith("┌") && !l.startsWith("│") && !l.startsWith("└"))
       .join("\n")
-      .split("\n⚠ Warnings:")[0]!
       .replace(/^\n+/, "")
       .replace(/\n+$/, "");
     previews.push(`${header}\n${body}`);
@@ -364,12 +510,14 @@ function buildMultiSectionBundle(spec: ShareSpec): BuildResult {
     goals: [],
     sections,
   };
+  if (crossEdges.length) bundle.crossEdges = crossEdges;
   if (spec.sharedBy?.trim()) bundle.sharedBy = spec.sharedBy.trim();
 
   const trackedCount = resolvedAll.filter((r) => r.tracked).length;
   const head: string[] = [];
   head.push("┌─ Goal Planner import preview (multi-section) ─────");
   head.push(`│ ${sections.length} sections · ${resolvedAll.length} goal(s) · ${trackedCount} auto-track · ${resolvedAll.length - trackedCount} manual/unverified`);
+  if (crossEdges.length) head.push(`│ ${crossEdges.length} cross-section dependency link(s)`);
   if (spec.sharedBy?.trim()) head.push(`│ Shared by: ${spec.sharedBy.trim()}`);
   head.push("│ Multi-section codes need a recent plugin build to import (GPSHARE2).");
   head.push("└───────────────────────────────────────────────");
@@ -927,6 +1075,13 @@ function renderPreview(spec: ShareSpec, resolved: ResolvedGoal[], warnings: stri
       } else {
         render(c, depth + 1, maxDepth, k.or, false);
       }
+    }
+    // Prerequisites in OTHER sections can't nest here — reference them with
+    // their section so the link is visible in the tree.
+    for (const c of r.crossRequires ?? []) {
+      lines.push(
+        `${"  ".repeat(Math.max(0, maxDepth - depth))}${c.or ? "(any-of) " : ""}↪ needs "${c.name}" — from section ${c.sectionIndex + 1} "${c.sectionLabel}"`,
+      );
     }
     lines.push(line(r, maxDepth - depth, isOr, isRoot && kids.length > 0));
     shown.add(r.ref);

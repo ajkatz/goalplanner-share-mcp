@@ -29,10 +29,6 @@ export const GOAL_TYPES = [
 ] as const;
 export type GoalType = (typeof GOAL_TYPES)[number];
 
-/** TagCategory enum names accepted by the plugin importer. */
-export const TAG_CATEGORIES = ["SKILL", "QUEST", "BOSS", "DIARY", "ITEM", "CUSTOM", "SYSTEM"] as const;
-export type TagCategory = (typeof TAG_CATEGORIES)[number];
-
 export type ShareKind = "SECTION" | "GOALS";
 
 export interface TagShareDto {
@@ -86,6 +82,27 @@ export interface SectionShareDto {
   goals: GoalShareDto[];
 }
 
+/**
+ * One dependency edge between goals in two DIFFERENT sections of a v2 bundle.
+ * Within a section, relations ride on each goal's section-scoped requires/
+ * orRequires refs; edges that cross sections can't be expressed there, so the
+ * bundle carries them as (section index, ref) → (section index, ref) pairs.
+ * Section indices are positions in the bundle's `sections` list; refs are the
+ * per-section goal refs. Mirrors the plugin's CrossEdgeDto.
+ */
+export interface CrossEdgeDto {
+  /** Index of the dependent goal's section in the bundle's section list. */
+  fromSection: number;
+  /** The dependent goal's ref within its section. */
+  fromRef: number;
+  /** Index of the prerequisite goal's section in the bundle's section list. */
+  toSection: number;
+  /** The prerequisite goal's ref within its section. */
+  toRef: number;
+  /** True for an OR (any-of) edge; false for a hard requirement. */
+  or: boolean;
+}
+
 export interface ShareBundle {
   v: number;
   kind: ShareKind;
@@ -95,6 +112,10 @@ export interface ShareBundle {
   goals: GoalShareDto[];
   /** v2 payloads: one entry per shared section (absent on the v1 wire). */
   sections?: SectionShareDto[];
+  /** v2 payloads: dependency edges between goals in DIFFERENT sections, which
+   *  the per-section requires/orRequires refs cannot express. Absent on the v1
+   *  wire and when no edges cross sections. */
+  crossEdges?: CrossEdgeDto[];
 }
 
 /**

@@ -114,6 +114,7 @@ const ALIASES: Record<string, { id: number; name: string }> = {
   // them / no wiki-prices row). Ids individually verified against the OSRS
   // Wiki item infobox (2026-06-09).
   "cursed phalanx": { id: 27248, name: "Cursed phalanx" },
+  "holy ornament kit": { id: 25742, name: "Holy ornament kit" }, // tob_hardmode_kit
   "sanguine dust": { id: 25746, name: "Sanguine dust" },
   "sanguine ornament kit": { id: 25744, name: "Sanguine ornament kit" },
   "twisted ancestral colour kit": { id: 24670, name: "Twisted ancestral colour kit" },
@@ -180,6 +181,7 @@ const NICKNAMES: Record<string, string | { target: string; label: string }> = {
   ralos: { target: "tonalztics_of_ralos_uncharged", label: "Tonalztics of ralos (uncharged)" },
   "tonalztics of ralos": { target: "tonalztics_of_ralos_uncharged", label: "Tonalztics of ralos (uncharged)" },
   "fang kit": "Cursed phalanx",
+  "holy kit": "Holy ornament kit",
   "sang kit": "Sanguine ornament kit",
   "sang dust": "Sanguine dust",
   "twisted kit": "Twisted ancestral colour kit",
@@ -192,6 +194,17 @@ const NICKNAMES: Record<string, string | { target: string; label: string }> = {
   "scorpia's offspring": { target: "scorpia_pet", label: "Scorpia's offspring" },
   "pharoah's sceptre": "Pharaoh's sceptre (uncharged)", // common misspelling
   "pharaoh's sceptre": "Pharaoh's sceptre (uncharged)",
+  // Fire cape: untradeable AND codename is `tzhaar_cape_fire` — invisible to
+  // both generated layers (Infernal/Obsidian capes resolve fine; this is the
+  // one famous outlier in the family).
+  "fire cape": { target: "tzhaar_cape_fire", label: "Fire cape" },
+  firecape: { target: "tzhaar_cape_fire", label: "Fire cape" },
+  // "Executioner's axe" as a whole is the community name for the Soulreaper
+  // axe (the corpus only has `league_executioner_weapon`, a Leagues cosmetic —
+  // never what a main-game goal means). The assembled axe is 28338.
+  "executioner's axe": "Soulreaper axe",
+  "executioners axe": "Soulreaper axe",
+  "executioner axe": "Soulreaper axe",
   "executioner's axe head": { target: "soulreaper_axe_head", label: "Executioner's axe head" },
   "executioner axe head": { target: "soulreaper_axe_head", label: "Executioner's axe head" },
   "eye of the duke": { target: "soulreaper_axe_eye", label: "Eye of the duke" },
@@ -199,6 +212,39 @@ const NICKNAMES: Record<string, string | { target: string; label: string }> = {
   "siren's staff": { target: "soulreaper_axe_staff", label: "Siren's staff" },
   blorva: { target: "dt2_sanguine_torva_kit", label: "Ancient blood ornament kit" },
   "blood torva": { target: "dt2_sanguine_torva_kit", label: "Ancient blood ornament kit" },
+  // Charged/degraded weapon variants invisible to BOTH generated layers: the
+  // charged form is untradeable (no wiki-prices row) AND its codename is an
+  // internal slug (`tots_charged`, `wild_cave_bow_charged`), so neither display
+  // nor codename matching can bridge the plain wiki name. Plain name → CHARGED
+  // id, mirroring items whose codename does match (scythe_of_vitur 22325,
+  // sanguinesti_staff 22323 are the charged forms); the uncharged forms keep
+  // their own wiki names ("Uncharged trident", "Craw's bow (u)") via the
+  // display layer. Labels are the wiki display names.
+  "trident of the seas": { target: "tots_charged", label: "Trident of the seas" },
+  "seas trident": { target: "tots_charged", label: "Trident of the seas" },
+  "trident of the swamp": { target: "toxic_tots_charged", label: "Trident of the swamp" },
+  "toxic trident": { target: "toxic_tots_charged", label: "Trident of the swamp" },
+  "swamp trident": { target: "toxic_tots_charged", label: "Trident of the swamp" },
+  "trident of the seas (e)": { target: "tots_i_charged", label: "Trident of the seas (e)" },
+  "trident of the swamp (e)": { target: "toxic_tots_i_charged", label: "Trident of the swamp (e)" },
+  "craw's bow": { target: "wild_cave_bow_charged", label: "Craw's bow" },
+  "craws bow": { target: "wild_cave_bow_charged", label: "Craw's bow" },
+  "viggora's chainmace": { target: "wild_cave_chainmace_charged", label: "Viggora's chainmace" },
+  "viggoras chainmace": { target: "wild_cave_chainmace_charged", label: "Viggora's chainmace" },
+  "thammaron's sceptre": { target: "wild_cave_sceptre_charged", label: "Thammaron's sceptre" },
+  "thammarons sceptre": { target: "wild_cave_sceptre_charged", label: "Thammaron's sceptre" },
+  "webweaver bow": { target: "wild_cave_webweaver_charged", label: "Webweaver bow" },
+  webweaver: { target: "wild_cave_webweaver_charged", label: "Webweaver bow" },
+  "ursine chainmace": { target: "wild_cave_ursine_charged", label: "Ursine chainmace" },
+  "accursed sceptre": { target: "wild_cave_accursed_charged", label: "Accursed sceptre" },
+  "amulet of blood fury": { target: "blood_amulet", label: "Amulet of blood fury" },
+  "blood fury": { target: "blood_amulet", label: "Amulet of blood fury" },
+  // Crystal armour: wiki names ("Crystal helm/body/legs") diverge from the
+  // codenames (`crystal_helmet`/`crystal_chestplate`/`crystal_platelegs`) and
+  // the pieces are untradeable — same two-layer blind spot as above.
+  "crystal helm": { target: "crystal_helmet", label: "Crystal helm" },
+  "crystal body": { target: "crystal_chestplate", label: "Crystal body" },
+  "crystal legs": { target: "crystal_platelegs", label: "Crystal legs" },
 };
 
 /** Codename → sentence-case display ("abyssal_whip" → "Abyssal whip"). */

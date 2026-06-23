@@ -84,6 +84,72 @@ describe("resolveItem — hardening (aliases, variants, ambiguity)", () => {
   });
 });
 
+describe("resolveItem — charged variants (untradeable + slug codename)", () => {
+  // These items are invisible to both generated layers: no wiki-prices row
+  // (untradeable when charged) and a pure-slug codename. Plain wiki name must
+  // resolve to the CHARGED id, consistent with scythe/sang/shadow whose
+  // codenames happen to match their charged form.
+  it("resolves the trident family by wiki display name", () => {
+    expect(resolveItem("Trident of the seas")).toMatchObject({ itemId: 11907, name: "Trident of the seas" });
+    expect(resolveItem("Trident of the swamp")).toMatchObject({ itemId: 12899, name: "Trident of the swamp" });
+    expect(resolveItem("toxic trident")?.itemId).toBe(12899);
+    expect(resolveItem("Trident of the seas (e)")?.itemId).toBe(22288);
+    expect(resolveItem("Trident of the swamp (e)")?.itemId).toBe(22292);
+  });
+
+  it("resolves charged wilderness weapons (codename wild_cave_*_charged)", () => {
+    expect(resolveItem("Craw's bow")).toMatchObject({ itemId: 22550, name: "Craw's bow" });
+    expect(resolveItem("craws bow")?.itemId).toBe(22550);
+    expect(resolveItem("Viggora's chainmace")?.itemId).toBe(22545);
+    expect(resolveItem("Thammaron's sceptre")?.itemId).toBe(22555);
+    expect(resolveItem("Webweaver bow")?.itemId).toBe(27655);
+    expect(resolveItem("Ursine chainmace")?.itemId).toBe(27660);
+    expect(resolveItem("Accursed sceptre")?.itemId).toBe(27665);
+  });
+
+  it("resolves blood fury and crystal armour wiki names", () => {
+    expect(resolveItem("Amulet of blood fury")).toMatchObject({ itemId: 24780, name: "Amulet of blood fury" });
+    expect(resolveItem("blood fury")?.itemId).toBe(24780);
+    expect(resolveItem("Crystal helm")?.itemId).toBe(23971);
+    expect(resolveItem("Crystal body")?.itemId).toBe(23975);
+    expect(resolveItem("Crystal legs")?.itemId).toBe(23979);
+  });
+
+  it("keeps the uncharged/tradeable forms reachable under their own wiki names", () => {
+    expect(resolveItem("Uncharged trident")?.itemId).toBe(11908);
+    expect(resolveItem("Uncharged toxic trident")?.itemId).toBe(12900);
+    expect(resolveItem("Trident of the seas (full)")?.itemId).toBe(11905);
+    expect(resolveItem("Craw's bow (u)")?.itemId).toBe(22547);
+  });
+});
+
+describe("resolveItem — live-testing gaps (2026-06-11)", () => {
+  it('"Executioner\'s axe" resolves to the Soulreaper axe, not the Leagues cosmetic', () => {
+    expect(resolveItem("Executioner's axe")).toMatchObject({ itemId: 28338, name: "Soulreaper axe" });
+    expect(resolveItem("executioners axe")?.itemId).toBe(28338);
+    expect(resolveItem("executioner axe")?.itemId).toBe(28338);
+  });
+
+  it("resolves the Soulreaper axe pieces under their drop names", () => {
+    expect(resolveItem("Executioner's axe head")?.itemId).toBe(28319);
+    expect(resolveItem("Eye of the duke")?.itemId).toBe(28321);
+    expect(resolveItem("Siren's staff")?.itemId).toBe(28323);
+    expect(resolveItem("Leviathan's lure")?.itemId).toBe(28325);
+  });
+
+  it('resolves "Fire cape" (untradeable, codename tzhaar_cape_fire)', () => {
+    expect(resolveItem("Fire cape")).toMatchObject({ itemId: 6570, name: "Fire cape" });
+    expect(resolveItem("firecape")?.itemId).toBe(6570);
+  });
+
+  it("resolves the ToB hard-mode ornament kits (untradeable, slug codenames)", () => {
+    expect(resolveItem("Holy ornament kit")).toMatchObject({ itemId: 25742, name: "Holy ornament kit" });
+    expect(resolveItem("holy kit")?.itemId).toBe(25742);
+    expect(resolveItem("Sanguine ornament kit")?.itemId).toBe(25744);
+    expect(resolveItem("Sanguine dust")?.itemId).toBe(25746);
+  });
+});
+
 describe("searchItems — candidate suggestions", () => {
   it("ranks an exact codename match first", () => {
     expect(searchItems("Dragon dagger")[0]?.itemId).toBe(1215);

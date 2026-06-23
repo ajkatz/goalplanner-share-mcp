@@ -43,6 +43,13 @@ export const ACCOUNT_ALIASES: Record<string, string> = {
   chompybirdkills: "CHOMPY_KILLS",
   colosseum: "COLOSSEUM_GLORY",
   glory: "COLOSSEUM_GLORY",
+  collectionlog: "COLLECTION_LOG_SLOTS",
+  collog: "COLLECTION_LOG_SLOTS",
+  clog: "COLLECTION_LOG_SLOTS",
+  clogslots: "COLLECTION_LOG_SLOTS",
+  diaries: "DIARY_TIERS_COMPLETED",
+  achievementdiaries: "DIARY_TIERS_COMPLETED",
+  diarytiers: "DIARY_TIERS_COMPLETED",
   delvelevel: "DOM_DEEPEST_LEVEL",
   doomdeepestlevel: "DOM_DEEPEST_LEVEL",
   leaguepoints: "LEAGUE_POINTS",
@@ -125,6 +132,9 @@ for (const k of ["questcape", "questpointcape", "maintainquestcape"]) {
 }
 for (const k of ["max", "maxing", "maxttl", "maxtotal", "maxtotallevel", "maxedaccount"]) {
   PHRASES.set(k, { enumName: "TOTAL_LEVEL", implied: (m) => m.maxTarget });
+}
+for (const k of ["diarycape", "achievementdiarycape", "achievementcape"]) {
+  PHRASES.set(k, { enumName: "DIARY_TIERS_COMPLETED", implied: (m) => m.maxTarget });
 }
 
 /** Leading goal-verbs players prefix phrases with ("Reach Elite CAs", "get to 2k total"). */

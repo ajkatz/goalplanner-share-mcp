@@ -55,6 +55,21 @@ describe("account-metric resolution", () => {
     expect(resolveAccountMetric("ca points")?.enumName).toBe("CA_POINTS");
   });
 
+  it("resolves collection log shorthand to COLLECTION_LOG_SLOTS", () => {
+    expect(resolveAccountMetric("Collection Log Slots")?.enumName).toBe("COLLECTION_LOG_SLOTS");
+    expect(resolveAccountMetric("collection log")?.enumName).toBe("COLLECTION_LOG_SLOTS");
+    expect(resolveAccountMetric("collog")?.enumName).toBe("COLLECTION_LOG_SLOTS");
+    expect(resolveAccountMetric("clog")?.enumName).toBe("COLLECTION_LOG_SLOTS");
+    expect(resolveAccountMetric("clog slots")?.enumName).toBe("COLLECTION_LOG_SLOTS");
+  });
+
+  it("resolves diary shorthand to DIARY_TIERS_COMPLETED", () => {
+    expect(resolveAccountMetric("Diary Tiers")?.enumName).toBe("DIARY_TIERS_COMPLETED");
+    expect(resolveAccountMetric("diary tiers")?.enumName).toBe("DIARY_TIERS_COMPLETED");
+    expect(resolveAccountMetric("diaries")?.enumName).toBe("DIARY_TIERS_COMPLETED");
+    expect(resolveAccountMetric("achievement diaries")?.enumName).toBe("DIARY_TIERS_COMPLETED");
+  });
+
   it("returns null for unknown metrics and offers suggestions", () => {
     expect(resolveAccountMetric("bank value")).toBeNull();
     expect(searchAccountMetrics("points", 10).length).toBeGreaterThanOrEqual(3);
@@ -101,7 +116,7 @@ describe("ACCOUNT goals in buildBundle", () => {
       goals: [{ type: "account", name: "quest points", targetValue: 999 }],
     });
     expect(resolved[0].tracked).toBe(true);
-    expect(warnings.some((w) => w.includes("333"))).toBe(true);
+    expect(warnings.some((w) => w.includes("335"))).toBe(true);
   });
 
   it("notes leagues metrics as seasonal-world-only", () => {
@@ -113,10 +128,52 @@ describe("ACCOUNT goals in buildBundle", () => {
     expect(resolved[0].note?.toLowerCase()).toContain("leagues");
   });
 
+  it('crafts a tracked "600 collection log slots" goal from shorthand', () => {
+    const { bundle, resolved, warnings } = buildBundle({
+      sectionName: "2026 Goals",
+      goals: [{ type: "ACCOUNT", name: "clog slots", targetValue: 600 }],
+    });
+    expect(bundle.goals[0]).toMatchObject({
+      type: "ACCOUNT",
+      accountMetric: "COLLECTION_LOG_SLOTS",
+      name: "Collection Log Slots",
+      targetValue: 600,
+    });
+    expect(resolved[0].tracked).toBe(true);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('crafts a tracked diary-tier goal ("achievement diary cape" implies 48)', () => {
+    const { bundle, resolved } = buildBundle({
+      sectionName: "2026 Goals",
+      goals: [{ type: "ACCOUNT", name: "achievement diary cape" }],
+    });
+    expect(bundle.goals[0]).toMatchObject({
+      type: "ACCOUNT",
+      accountMetric: "DIARY_TIERS_COMPLETED",
+      targetValue: 48,
+    });
+    expect(resolved[0].tracked).toBe(true);
+  });
+
+  it("crafts a partial diary-tier goal (40/48 tiers)", () => {
+    const { bundle, resolved } = buildBundle({
+      sectionName: "2026 Goals",
+      goals: [{ type: "account", name: "diary tiers", targetValue: 40 }],
+    });
+    expect(bundle.goals[0]).toMatchObject({
+      type: "ACCOUNT",
+      accountMetric: "DIARY_TIERS_COMPLETED",
+      name: "Diary Tiers",
+      targetValue: 40,
+    });
+    expect(resolved[0].tracked).toBe(true);
+  });
+
   it("accepts a known explicit accountMetric and keeps the caller's label", () => {
     const { bundle, resolved } = buildBundle({
       sectionName: "Account",
-      goals: [{ type: "ACCOUNT", name: "Quest cape progress", accountMetric: "QUEST_POINTS", targetValue: 333 }],
+      goals: [{ type: "ACCOUNT", name: "Quest cape progress", accountMetric: "QUEST_POINTS", targetValue: 335 }],
     });
     expect(bundle.goals[0].accountMetric).toBe("QUEST_POINTS");
     expect(bundle.goals[0].name).toBe("Quest cape progress");
