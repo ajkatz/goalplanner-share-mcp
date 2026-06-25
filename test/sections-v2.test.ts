@@ -12,6 +12,34 @@ const RAIDS = [
 ];
 
 describe("multi-section crafting (GPSHARE2)", () => {
+  it("carries each section's nested-view preference through encode/decode", () => {
+    const { bundle } = buildBundle({
+      sharedBy: "Andrew",
+      sections: [
+        { name: "Nested", nested: true, goals: [{ type: "skill", skill: "Attack", level: 90 }] },
+        { name: "Flat", nested: false, goals: [{ type: "skill", skill: "Defence", level: 90 }] },
+        { name: "Default", goals: [{ type: "skill", skill: "Magic", level: 90 }] },
+      ],
+    });
+    const secs = decode(encode(bundle)).sections!;
+    const by = (n: string) => secs.find((s) => s.name === n)!;
+    expect(by("Nested").nestedOverride).toBe(true);
+    expect(by("Flat").nestedOverride).toBe(false);
+    expect(by("Default").nestedOverride).toBeUndefined();
+  });
+
+  it("a single nested section forces the v2 wire so nestedOverride survives", () => {
+    // The v1 wire has nowhere to carry nestedOverride; a lone nested section must
+    // therefore upgrade to GPSHARE2 or the preference is silently dropped on import.
+    const { bundle } = buildBundle({
+      sections: [{ name: "Nested", nested: true, goals: [{ type: "skill", skill: "Attack", level: 90 }] }],
+    });
+    expect(needsV2(bundle)).toBe(true);
+    const code = encode(bundle);
+    expect(code.startsWith("GPSHARE2:")).toBe(true);
+    expect(decode(code).sections![0].nestedOverride).toBe(true);
+  });
+
   it("a sections[] spec builds one bundle with one entry per section", () => {
     const { bundle, resolved, warnings } = buildBundle({
       sharedBy: "Andrew",

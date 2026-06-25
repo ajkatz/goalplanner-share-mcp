@@ -79,6 +79,9 @@ export interface SectionShareDto {
   colorRgb: number; // -1 = default
   /** Land in the recipient's DEFAULT plan, reusing existing equivalents. */
   targetDefault?: boolean;
+  /** Nested-view preference on import: true = force nested, false = force flat,
+   *  omitted/undefined = recipient's global default. */
+  nestedOverride?: boolean;
   goals: GoalShareDto[];
 }
 
@@ -132,8 +135,12 @@ export function effectiveSections(bundle: ShareBundle): SectionShareDto[] {
   return [legacy];
 }
 
-/** True when the bundle needs the v2 wire (multi-section or default-target). */
+/** True when the bundle needs the v2 wire (multi-section, default-target, or a
+ *  nested-view preference - the v1 wire has nowhere to carry nestedOverride). */
 export function needsV2(bundle: ShareBundle): boolean {
   const secs = effectiveSections(bundle);
-  return secs.length > 1 || secs.some((s) => s.targetDefault === true);
+  return (
+    secs.length > 1 ||
+    secs.some((s) => s.targetDefault === true || typeof s.nestedOverride === "boolean")
+  );
 }

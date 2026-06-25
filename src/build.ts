@@ -29,6 +29,7 @@ import {
   resolveItemsPhrase,
   isMultiItemPhrase,
 } from "./refdata/items.js";
+import { getItemSourceTags } from "./refdata/item-sources.js";
 import {
   resolveDiary,
   resolveDiaryGroup,
@@ -110,6 +111,9 @@ export interface SectionSpec {
   /** Import into the recipient's DEFAULT plan, reusing existing equivalents
    *  (the same dedup the in-game Add Goal flow applies). */
   targetDefault?: boolean;
+  /** Nested-view preference on import: true = force nested, false = force flat,
+   *  omitted = recipient's global default. */
+  nested?: boolean;
   goals: GoalSpec[];
 }
 
@@ -123,6 +127,78 @@ export interface ShareSpec {
   /** Multi-section form: one code carrying several sections (GPSHARE2 wire;
    *  recipients need a recent plugin build). Ignores mode/sectionName/goals. */
   sections?: SectionSpec[];
+  /** @internal Set when buildBundle is re-entered per section by
+   *  buildMultiSectionBundle; suppresses duplicate unknown-key validation on
+   *  the already-expanded goals. Not part of the public crafting API. */
+  __nested?: boolean;
+}
+
+// ---- spec key validation -----------------------------------------------------
+// Catch silently-ignored typos like `target` (the field is `targetValue`) or a
+// misspelled section `nested`. Derived from the GoalSpec/SectionSpec interfaces;
+// keep in sync when adding a field.
+
+const GOAL_SPEC_KEYS: readonly string[] = [
+  "id", "type", "name", "description",
+  "skill", "level", "xp",
+  "tooltip", "colorRgb", "optional",
+  "skillName", "questName", "accountMetric", "bossName",
+  "varbitId", "itemId", "spriteId", "caTaskId", "targetValue", "wikiUrl",
+  "requires", "orRequires",
+];
+
+const SECTION_SPEC_KEYS: readonly string[] = [
+  "name", "sectionColorRgb", "targetDefault", "nested", "goals",
+];
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  let curr = new Array<number>(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n]!;
+}
+
+/** Nearest allowlist key to a mistyped one, or undefined when nothing is close.
+ *  A prefix relationship (`target` vs `targetValue`) counts as a near-miss. */
+function suggestKey(unknown: string, allowed: readonly string[]): string | undefined {
+  const u = unknown.toLowerCase();
+  let best: string | undefined;
+  let bestScore = Infinity;
+  for (const k of allowed) {
+    const kl = k.toLowerCase();
+    let d = levenshtein(u, kl);
+    if (kl.startsWith(u) || u.startsWith(kl)) d = Math.min(d, 1);
+    if (d < bestScore) {
+      bestScore = d;
+      best = k;
+    }
+  }
+  return best !== undefined && bestScore <= Math.max(2, Math.ceil(unknown.length / 2)) ? best : undefined;
+}
+
+/** Push a non-fatal warning for each key on `obj` not in the allowlist. */
+function warnUnknownKeys(obj: object, allowed: readonly string[], label: string, warnings: string[]): void {
+  const allow = new Set(allowed);
+  for (const key of Object.keys(obj)) {
+    if (allow.has(key)) continue;
+    const hint = suggestKey(key, allowed);
+    warnings.push(`${label}: unknown key "${key}"${hint ? ` — did you mean "${hint}"?` : " — ignored."}`);
+  }
+}
+
+function goalLabel(g: GoalSpec, index: number): string {
+  return String(g.id ?? g.name ?? index);
 }
 
 export interface ResolvedGoal {
@@ -134,6 +210,8 @@ export interface ResolvedGoal {
   detail: string;
   tracked: boolean;
   note?: string;
+  /** Source-tag labels for the preview (e.g. ["Cerberus"]); ITEM_GRIND only. */
+  tags?: string[];
   requires: string[]; // resolved ids (AND)
   orRequires: string[]; // resolved ids (OR)
   /** Prerequisites living in a DIFFERENT section (multi-section builds only) —
@@ -219,6 +297,12 @@ export function buildBundle(spec: ShareSpec): BuildResult {
     return buildMultiSectionBundle(spec);
   }
   const warnings: string[] = [];
+  // Validate raw user input once. Skipped on the per-section re-entry from
+  // buildMultiSectionBundle (goals already expanded + validated there).
+  if (!spec.__nested) {
+    (spec.goals ?? []).forEach((g, i) =>
+      warnUnknownKeys(g, GOAL_SPEC_KEYS, `goal "${goalLabel(g, i)}"`, warnings));
+  }
   const goals = expandGroupGoals(spec.goals ?? [], warnings);
   if (goals.length === 0) {
     warnings.push("no goals provided — the bundle would be empty and the plugin rejects empty imports.");
@@ -334,6 +418,13 @@ function buildMultiSectionBundle(spec: ShareSpec): BuildResult {
     sec.targetDefault ? "Default (your main plan)" : sec.name?.trim() || `Section ${i + 1}`,
   );
 
+  // Validate raw section + goal keys before expansion (one pass over user input).
+  secSpecs.forEach((sec, i) => {
+    warnUnknownKeys(sec, SECTION_SPEC_KEYS, `[${labels[i]}] section`, warnings);
+    (sec.goals ?? []).forEach((g, r) =>
+      warnUnknownKeys(g, GOAL_SPEC_KEYS, `[${labels[i]}] goal "${goalLabel(g, r)}"`, warnings));
+  });
+
   // Pre-expand group goals so ids and refs (list positions) are final before
   // cross-section wiring; buildBundle's own expansion pass is a no-op on the
   // already-expanded result.
@@ -411,6 +502,7 @@ function buildMultiSectionBundle(spec: ShareSpec): BuildResult {
       sectionName: sec.targetDefault ? "Default" : sec.name,
       sectionColorRgb: sec.sectionColorRgb,
       goals,
+      __nested: true,
     });
     for (const w of sub.warnings) warnings.push(`[${labels[i]}] ${w}`);
 
@@ -420,6 +512,7 @@ function buildMultiSectionBundle(spec: ShareSpec): BuildResult {
     };
     if (!sec.targetDefault && sec.name?.trim()) dto.name = sec.name.trim();
     if (sec.targetDefault) dto.targetDefault = true;
+    if (typeof sec.nested === "boolean") dto.nestedOverride = sec.nested;
     sections.push(dto);
     subs.push(sub);
   });
@@ -637,6 +730,19 @@ function resolveGoal(
       if (g.description?.trim()) dto.description = g.description.trim();
       if (g.wikiUrl?.trim()) dto.wikiUrl = g.wikiUrl.trim();
       if (g.optional) dto.optional = true;
+      // Source tags: a collection-log item carries its drop source (boss / raid /
+      // clue / minigame) as a system tag, mirroring the plugin's in-game add. The
+      // importer find-or-creates each by label+category; colorRgb -1 keeps the
+      // category's default colour. Non-clog items resolve to none.
+      const sourceTags = getItemSourceTags(itemId);
+      if (sourceTags.length) {
+        dto.tags = sourceTags.map((t) => ({
+          label: t.label,
+          category: t.category,
+          colorRgb: -1,
+          system: true,
+        }));
+      }
       const res: ResolvedGoal = {
         ref,
         id,
@@ -647,6 +753,7 @@ function resolveGoal(
         requires: [],
         orRequires: [],
       };
+      if (sourceTags.length) res.tags = sourceTags.map((t) => t.label);
       if (note) res.note = note;
       return { dto, res };
     };
@@ -1059,7 +1166,8 @@ function renderPreview(spec: ShareSpec, resolved: ResolvedGoal[], warnings: stri
     const badge = r.tracked ? "✓ auto-tracks" : r.note === "unverified identifier" ? "⚠ unverified" : "○ manual";
     const tag = `${TYPE_LABEL[r.type]}${r.detail ? ` · ${r.detail}` : ""}`;
     const finalMark = isFinal ? "   ◀ final goal" : "";
-    return `${indent}${orMark}${r.name}   [${tag}]  ${badge}${finalMark}`;
+    const tagMark = r.tags && r.tags.length ? `  {${r.tags.join(", ")}}` : "";
+    return `${indent}${orMark}${r.name}   [${tag}]  ${badge}${finalMark}${tagMark}`;
   };
 
   // Bottom-up (post-order): emit prerequisites ABOVE the goal that needs them, with

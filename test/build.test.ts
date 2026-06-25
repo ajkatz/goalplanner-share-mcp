@@ -66,6 +66,31 @@ describe("buildBundle — BOSS typed core", () => {
   });
 });
 
+describe("buildBundle — item source tags", () => {
+  it("tags a collection-log item with its drop source (system tag, default colour)", () => {
+    const { bundle, resolved } = buildBundle(spec([{ type: "ITEM_GRIND", name: "Pegasian crystal" }]));
+    const g = bundle.goals[0]!;
+    expect(g.type).toBe("ITEM_GRIND");
+    expect(g.tags).toEqual([{ label: "Cerberus", category: "BOSS", colorRgb: -1, system: true }]);
+    // Preview surfaces the source label too.
+    expect(resolved[0]!.tags).toEqual(["Cerberus"]);
+  });
+
+  it("carries multiple source tags for a shared drop (boss + All Pets)", () => {
+    // Araxxor pet (29836): tagged both by its boss and the All Pets clog page.
+    const { bundle } = buildBundle(spec([{ type: "ITEM_GRIND", name: "Nid", itemId: 29836 }]));
+    const labels = (bundle.goals[0]!.tags ?? []).map((t) => t.label);
+    expect(labels).toContain("Araxxor");
+    expect(labels).toContain("All Pets");
+  });
+
+  it("emits no tags for a non-collection-log item", () => {
+    const { bundle, resolved } = buildBundle(spec([{ type: "ITEM_GRIND", name: "Nature rune", targetValue: 1000 }]));
+    expect(bundle.goals[0]!.tags).toBeUndefined();
+    expect(resolved[0]!.tags).toBeUndefined();
+  });
+});
+
 describe("buildBundle — Phase 2 types", () => {
   it("tracks an explicit valid quest enum constant (typed core since Phase 2)", () => {
     const { bundle, resolved, warnings } = buildBundle(

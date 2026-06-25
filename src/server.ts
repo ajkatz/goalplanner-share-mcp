@@ -46,6 +46,13 @@ const goalShape = z.object({
 const sectionShape = z.object({
   name: z.string().optional().describe("Section display name. Omit for loose goals or when targetDefault is set."),
   sectionColorRgb: z.number().int().optional().describe("Section colour 0xRRGGBB; -1 = default."),
+  nested: z
+    .boolean()
+    .optional()
+    .describe(
+      "Nested-view preference for this section on import: true = force the dependency-nested (indented tree) view, " +
+        "false = force the flat view; omit to leave the recipient on their global default.",
+    ),
   targetDefault: z
     .boolean()
     .optional()
@@ -197,6 +204,8 @@ export function createServer(): McpServer {
         '  SETS, LOADOUTS and PHRASES fan out into one goal per piece: "full torva" → 3, "full masori +',
         '  tbow" → 4, "maxed melee setup" → 9 (also maxed ranged/mage). Pass an explicit itemId to skip',
         "  name resolution; an unresolvable name with no id → CUSTOM.",
+        "  Collection-log items auto-carry their drop SOURCE as a tag (boss / raid / clue / minigame /",
+        '  "All Pets"), e.g. "Pegasian crystal" → Cerberus — the same tags the plugin seeds in-game.',
         "",
         `DIARY resolves an "<Area> <Tier>" name across ${DIARY_COUNT} achievement-diary tiers (12 areas`,
         "  × Easy/Medium/Hard/Elite, e.g. \"Ardougne Elite\", \"Varrock hard diary\"; area aliases like",
