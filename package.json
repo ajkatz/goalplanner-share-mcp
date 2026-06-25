@@ -23,7 +23,8 @@
     "gen:quests": "node scripts/gen-quests.mjs",
     "gen:accounts": "node scripts/gen-accounts.mjs",
     "gen:cas": "node scripts/gen-cas.mjs",
-    "gen:item-names": "node scripts/gen-item-names.mjs"
+    "gen:item-names": "node scripts/gen-item-names.mjs",
+    "gen:item-sources": "node scripts/gen-item-sources.mjs"
   },
   "engines": {
     "node": ">=18"

@@ -130,7 +130,13 @@ for (const [tier, points] of Object.entries(CA_TIER_POINTS)) {
 for (const k of ["questcape", "questpointcape", "maintainquestcape"]) {
   PHRASES.set(k, { enumName: "QUEST_POINTS", implied: (m) => m.maxTarget });
 }
-for (const k of ["max", "maxing", "maxttl", "maxtotal", "maxtotallevel", "maxedaccount"]) {
+for (const k of [
+  "max", "maxing", "maxttl", "maxtotal", "maxtotallevel", "maxedaccount",
+  // "additional 99s" / "finish maxing" = the rest of the 99s toward a maxed
+  // account; cleanest as one Total Level @ max goal rather than N skill goals.
+  "additional99s", "additional99", "more99s", "restofmy99s", "restof99s",
+  "finishmaxing", "maxtheaccount", "maxaccount", "finishmax", "finishingmax",
+]) {
   PHRASES.set(k, { enumName: "TOTAL_LEVEL", implied: (m) => m.maxTarget });
 }
 for (const k of ["diarycape", "achievementdiarycape", "achievementcape"]) {

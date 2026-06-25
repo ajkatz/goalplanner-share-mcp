@@ -5,6 +5,7 @@ import {
   ACCOUNT_ALIASES,
   isKnownAccountMetric,
   resolveAccountMetric,
+  resolveAccountPhrase,
   searchAccountMetrics,
 } from "../src/refdata/accounts.js";
 import { buildBundle, TYPED_CORE } from "../src/build.js";
@@ -37,6 +38,16 @@ describe("account-metric refdata integrity", () => {
   it("leagues metrics are flagged (seasonal-world tracking only)", () => {
     expect(ACCOUNT_METRICS.find((m) => m.enumName === "LEAGUE_POINTS")?.leagues).toBe(true);
     expect(ACCOUNT_METRICS.find((m) => m.enumName === "QUEST_POINTS")?.leagues).toBe(false);
+  });
+});
+
+describe("account phrases", () => {
+  it("'additional 99s' and maxing phrases imply Total Level at max", () => {
+    for (const p of ["additional 99s", "more 99s", "finish maxing", "max the account", "maxing"]) {
+      const r = resolveAccountPhrase(p);
+      expect(r?.metric.enumName, p).toBe("TOTAL_LEVEL");
+      expect(r?.impliedTarget, p).toBe(r?.metric.maxTarget);
+    }
   });
 });
 
