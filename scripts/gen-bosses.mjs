@@ -7,11 +7,13 @@ import { dirname, join, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = process.env.GOAL_PLANNER_REPO || resolve(here, "..", "..", "runelite-goal-planner");
-const src = join(repo, "src/main/java/com/goalplanner/data/BossKillData.java");
+// Bosses were externalized from BossKillData.java inline puts to a TSV resource;
+// read the canonical names from column 0 of boss-killcount.tsv.
+const src = join(repo, "src/main/resources/com/goalplanner/data/boss-killcount.tsv");
 
-const java = readFileSync(src, "utf8");
-const names = [...java.matchAll(/BOSSES\.put\("([^"]+)"/g)].map((m) => m[1]);
-if (names.length === 0) throw new Error(`no BOSSES.put entries found in ${src}`);
+const tsv = readFileSync(src, "utf8");
+const names = tsv.split("\n").map((l) => l.split("\t")[0].trim()).filter(Boolean);
+if (names.length === 0) throw new Error(`no boss rows found in ${src}`);
 
 const header = `/**
  * Boss reference data — the exact boss names the plugin tracks, from
@@ -21,7 +23,7 @@ const header = `/**
  *
  * GENERATED — do not hand-edit. Regenerate with \`npm run gen:bosses\` (reads the
  * plugin source via $GOAL_PLANNER_REPO; see scripts/gen-bosses.mjs).
- * Source: runelite-goal-planner BossKillData.java (${names.length} bosses).
+ * Source: runelite-goal-planner boss-killcount.tsv (${names.length} bosses).
  */
 `;
 
