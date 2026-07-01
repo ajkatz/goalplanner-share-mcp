@@ -7,7 +7,7 @@
  *
  * GENERATED — do not hand-edit. Regenerate with `npm run gen:quests` (runs the
  * enum from the local runelite-api jar; see scripts/gen-quests.mjs).
- * Source: runelite-api 1.12.32-SNAPSHOT (210 quests).
+ * Source: runelite-api 1.12.28 (209 quests).
  */
 
 export interface QuestRef {
@@ -178,7 +178,6 @@ export const QUESTS: readonly QuestRef[] = [
   { enumName: "TEMPLE_OF_IKOV", questId: 146, displayName: "Temple of Ikov" },
   { enumName: "TEMPLE_OF_THE_EYE", questId: 167, displayName: "Temple of the Eye" },
   { enumName: "THE_ASCENT_OF_ARCEUUS", questId: 3, displayName: "The Ascent of Arceuus" },
-  { enumName: "THE_BLOOD_MOON_RISES", questId: 16414, displayName: "The Blood Moon Rises" },
   { enumName: "THE_CORSAIR_CURSE", questId: 18, displayName: "The Corsair Curse" },
   { enumName: "THE_CURSE_OF_ARRAV", questId: 3937, displayName: "The Curse of Arrav" },
   { enumName: "THE_DEPTHS_OF_DESPAIR", questId: 26, displayName: "The Depths of Despair" },
