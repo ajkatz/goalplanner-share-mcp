@@ -25,7 +25,7 @@ export interface AccountMetricRef {
 }
 
 export const ACCOUNT_METRICS: readonly AccountMetricRef[] = [
-  { enumName: "QUEST_POINTS", displayName: "Quest Points", minTarget: 1, maxTarget: 335, leagues: false },
+  { enumName: "QUEST_POINTS", displayName: "Quest Points", minTarget: 1, maxTarget: 339, leagues: false },
   { enumName: "COMBAT_LEVEL", displayName: "Combat Level", minTarget: 3, maxTarget: 126, leagues: false },
   { enumName: "TOTAL_LEVEL", displayName: "Total Level", minTarget: 1, maxTarget: 2376, leagues: false },
   { enumName: "CA_POINTS", displayName: "CA Points", minTarget: 1, maxTarget: 2630, leagues: false },
@@ -33,7 +33,7 @@ export const ACCOUNT_METRICS: readonly AccountMetricRef[] = [
   { enumName: "KUDOS", displayName: "Museum Kudos", minTarget: 1, maxTarget: 243, leagues: false },
   { enumName: "ATT_STR_COMBINED", displayName: "Att + Str", minTarget: 2, maxTarget: 198, leagues: false },
   { enumName: "MISC_APPROVAL", displayName: "Misc. Approval", minTarget: 1, maxTarget: 127, leagues: false },
-  { enumName: "TOG_MAX_TEARS", displayName: "Tears of Guthix PB", minTarget: 1, maxTarget: 335, leagues: false },
+  { enumName: "TOG_MAX_TEARS", displayName: "Tears of Guthix PB", minTarget: 1, maxTarget: 339, leagues: false },
   { enumName: "CHOMPY_KILLS", displayName: "Chompy Kills", minTarget: 1, maxTarget: 4000, leagues: false },
   { enumName: "COLOSSEUM_GLORY", displayName: "Colosseum Glory", minTarget: 1, maxTarget: 100000, leagues: false },
   { enumName: "DOM_DEEPEST_LEVEL", displayName: "DoM Deepest Level", minTarget: 1, maxTarget: 8, leagues: false },

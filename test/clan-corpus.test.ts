@@ -57,7 +57,7 @@ const CASES: Case[] = [
   account("Actually do gm cas and become gm", "gm cas", "CA_POINTS", 2630),
   account("Max TTL", "Max TTL", "TOTAL_LEVEL", 2376),
   account("Get closer to maxing", "maxing", "TOTAL_LEVEL", 2376),
-  account("Maintain Quest Cape", "Maintain Quest Cape", "QUEST_POINTS", 335),
+  account("Maintain Quest Cape", "Maintain Quest Cape", "QUEST_POINTS", 339),
   account("Reach 2000 2100 total level", "total level", "TOTAL_LEVEL", 2100, 2100),
   account("greenlogging chompy birds (2900/4000)", "chompy kills", "CHOMPY_KILLS", 4000, 4000),
   // ── Slayer drops ─────────────────────────────────────────────────────────

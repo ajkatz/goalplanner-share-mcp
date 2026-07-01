@@ -127,7 +127,7 @@ describe("ACCOUNT goals in buildBundle", () => {
       goals: [{ type: "account", name: "quest points", targetValue: 999 }],
     });
     expect(resolved[0].tracked).toBe(true);
-    expect(warnings.some((w) => w.includes("335"))).toBe(true);
+    expect(warnings.some((w) => w.includes("339"))).toBe(true);
   });
 
   it("notes leagues metrics as seasonal-world-only", () => {
