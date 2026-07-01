@@ -184,6 +184,23 @@ Use a relative `dist/index.js` only in this repo's own `.mcp.json` (cwd = repo r
 The server loads at Claude Code startup, so a newly-registered server appears in the *next*
 session. Claude Desktop uses the same block in `claude_desktop_config.json`.
 
+## Deploying changes
+
+There is **no hosted or remote deployment** — this is a local stdio MCP server. Each user runs
+it from `dist/index.js` on their own machine (the `mcpServers` block above); the client spawns
+it over stdio at startup.
+
+Because the client runs the **built** `dist/`, not the TypeScript source, changes only take
+effect after a rebuild:
+
+1. Pull / make your edits (source lives in `src/`; reference data in `src/refdata/`).
+2. `npm run build` — `dist/` is gitignored, so this is always a fresh local build, never committed.
+3. Restart the client (or reconnect the server) so the new `dist/` is loaded — it's read once at startup.
+
+Skipping the rebuild is the usual cause of a **stale server** serving old data (e.g. regenerated
+`refdata/` that hasn't been compiled into `dist/` yet). If you regenerate reference data with any
+`npm run gen:*` script, follow it with `npm run build` before the change reaches the running server.
+
 ## Format
 
 ```
